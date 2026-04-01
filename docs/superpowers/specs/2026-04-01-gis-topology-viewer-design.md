@@ -107,12 +107,12 @@ The API uses a **tile-based contract** (`z/x/y` scheme) for spatial queries. The
 ```
 GET /api/topology/tiles/{z}/{x}/{y}/elements
   -> returns elements within the tile, clustered if zoom < 12
-  Response: { elements: NetworkElement[], clusters: TopologyCluster[] }
+  Response: { elements: NetworkElement[], clusters: TopologyCluster[], generation: number, removedIds: string[] }
 
 GET /api/topology/tiles/{z}/{x}/{y}/links
   -> returns links where at least one endpoint is within the tile
   -> includes stub endpoint data (id, lng, lat) for dangling endpoints
-  Response: { links: TopologyLink[], stubs: { id: string, lng: number, lat: number }[] }
+  Response: { links: TopologyLink[], stubs: { id: string, lng: number, lat: number }[], generation: number, removedLinkIds: string[] }
 
 GET /api/topology/elements/{id}
   -> returns single element with full details
@@ -167,9 +167,29 @@ Links are returned if **at least one endpoint** is within the requested tile. Fo
 ### Tile-Based Caching
 
 - **Cache key:** `tile:{z}/{x}/{y}:filters:{hash}:version:{v}` where filter hash is a deterministic hash of active filter params.
-- **Merge semantics:** Elements are upserted by ID into the Graphology working-set graph. If the server returns an element with a higher `version`, the local copy is replaced. Removed elements are identified by absence from a re-fetched tile and pruned from the graph.
-- **Eviction:** LRU eviction by tile. When evicting a tile, its elements are removed from the graph unless they are part of the current selection, breadcrumb trail, or expanded neighbors. These pinned elements are exempt from eviction.
+- **Merge semantics:** Elements are upserted by ID into the Graphology working-set graph. If the server returns an element with a higher `version`, the local copy is replaced.
+- **Deletion semantics:** Elements are only removed from the working-set graph when the backend explicitly declares deletion via `removedIds` in the tile response. Absence from a tile response does **not** imply deletion — elements may be absent due to clustering transitions, filter changes, or tile-boundary shifts. The backend includes a per-tile `generation` number and a `removedIds` array listing elements that were deleted since the client's last known generation for that tile.
+- **Eviction:** LRU eviction by tile. When evicting a tile, its elements are removed from the graph unless they are pinned (see [Pinned Data Limits](#pinned-data-limits)). Evicted data can always be re-fetched.
 - **In-flight request management:** All viewport-triggered fetches use `AbortController`. When viewport changes, in-flight requests for tiles no longer needed are cancelled before issuing new ones.
+
+### Request Generation Ordering
+
+Each viewport/filter state change increments a monotonic **request generation** counter on the client. Every outgoing tile request is tagged with its generation. When a response arrives:
+
+1. If the response's generation is older than the current generation, **discard it** — the viewport or filters have moved on.
+2. If the response's generation matches the current generation, **apply it** to the working-set graph.
+3. Retries inherit the generation of the original request. If the generation has been superseded by the time the retry resolves, the retry response is discarded.
+
+This prevents stale data injection from late-arriving or retried requests under poor network conditions.
+
+### Link Deduplication & Garbage Collection
+
+Links can appear in multiple tile responses (when endpoints span tiles). The working-set graph handles this as follows:
+
+- **Upsert by ID:** Links are globally upserted by ID. Duplicate link data from overlapping tiles is merged (higher version wins).
+- **Tile reference counting:** Each link tracks which tiles contributed it (a set of tile keys). When a tile is evicted, its tile key is removed from each link's reference set. A link is removed from the graph only when its reference set is empty and it is not pinned.
+- **Stub replacement:** When a link is first loaded with a stub endpoint, the stub is replaced with the full element data if/when the endpoint's tile is loaded. Stubs are rendered as faded lines; full endpoints render normally.
+- **Dangling edge cleanup:** On tile eviction, if a link loses all its tile references and neither endpoint is in the working-set graph, the link is removed.
 
 ### Graphology as Working-Set Graph
 
@@ -177,9 +197,25 @@ Graphology is the **client working-set graph**, not a full source of truth. The 
 
 ### Staleness Handling
 
-- On re-fetch of a tile, compare returned element versions with cached versions. Update stale entries.
+- On re-fetch of a tile, compare returned element versions with cached versions. Update stale entries. Process `removedIds` to delete elements confirmed deleted by the backend.
 - If a selected element is re-fetched with changes, update the detail panel reactively.
-- If a selected element is absent from a re-fetched tile (deleted server-side), show a "no longer available" indicator and clear the selection.
+- If a selected element appears in `removedIds` (confirmed deleted server-side), show a "no longer available" indicator and clear the selection.
+
+### Pinned Data Limits
+
+Pinned elements (selection, breadcrumb trail, expanded neighbors) are exempt from tile-based eviction, but subject to hard limits to prevent unbounded memory growth:
+
+| Pinned Category | Hard Limit | Overflow Behavior |
+|---|---|---|
+| Selection | 500 elements | Oldest selections demoted first |
+| Breadcrumb trail | 50 entries | Oldest breadcrumbs dropped (FIFO) |
+| Expanded neighbors | 2,000 elements | Further expansion disabled; UI shows "memory limit reached — zoom in or clear exploration history" |
+| Total pinned (all categories) | 5,000 elements | Enforce by demoting oldest pins across categories |
+
+**Memory pressure detection:** Monitor `performance.memory.usedJSHeapSize` (Chrome) or estimate from element count. When heap exceeds 1.0 GB (warning threshold, below the 1.2 GB hard target):
+1. Aggressively evict non-adjacent tiles (keep only the 3x3 tile grid around the viewport center).
+2. Reduce pinned limits by 50%.
+3. Disable further neighbor expansion until heap drops below 800 MB.
 
 ## User Interface
 
