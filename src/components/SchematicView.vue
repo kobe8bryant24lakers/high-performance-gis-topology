@@ -23,7 +23,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const selectionStore = useSelectionStore()
 const { positions, isComputing, runLayout, updatePosition, dispose } = useForceLayout()
 
-let deck: Deck | null = null
+let deck: Deck<any> | null = null
 let isDragging = false
 let dragNodeId: string | null = null
 
@@ -51,9 +51,9 @@ onMounted(() => {
     canvas: canvasRef.value,
     views: [new OrthographicView({ id: 'ortho' })],
     initialViewState: {
-      target: [0, 0, 0],
+      target: [0, 0, 0] as [number, number, number],
       zoom: 0,
-    },
+    } as any,
     controller: true,
     layers: layers.value,
     onDragStart: (info: any) => {
