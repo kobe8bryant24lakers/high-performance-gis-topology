@@ -18,10 +18,11 @@ export function generateElements(count: number): NetworkElement[] {
     const lng = seededRandom() * 360 - 180
     const lat = seededRandom() * 180 - 90
     const typeIndex = Math.floor(seededRandom() * ELEMENT_TYPES.length)
+    const elementType = ELEMENT_TYPES[typeIndex] ?? 'router'
     elements.push({
       id: `el-${i}`,
-      type: ELEMENT_TYPES[typeIndex],
-      label: `${ELEMENT_TYPES[typeIndex]}-${i}`,
+      type: elementType,
+      label: `${elementType}-${i}`,
       lng,
       lat,
       version: 1,
@@ -38,11 +39,13 @@ export function generateLinks(elements: NetworkElement[], count: number): Topolo
     const srcIdx = Math.floor(seededRandom() * elements.length)
     let tgtIdx = Math.floor(seededRandom() * elements.length)
     if (tgtIdx === srcIdx) tgtIdx = (tgtIdx + 1) % elements.length
+    const src = elements[srcIdx]!
+    const tgt = elements[tgtIdx]!
     links.push({
       id: `link-${i}`,
       type: 'connection',
-      sourceId: elements[srcIdx].id,
-      targetId: elements[tgtIdx].id,
+      sourceId: src.id,
+      targetId: tgt.id,
       directed: false,
       version: 1,
       updatedAt: '2026-01-01T00:00:00Z',
