@@ -17,7 +17,7 @@ export const useSelectionStore = defineStore('selection', () => {
     if (next.has(id)) {
       next.delete(id)
       if (primarySelectedId.value === id) {
-        primarySelectedId.value = next.size > 0 ? [...next][next.size - 1] : null
+        primarySelectedId.value = next.size > 0 ? ([...next].pop() ?? null) : null
       }
     } else {
       if (next.size >= MAX_SELECTION) return
@@ -30,7 +30,7 @@ export const useSelectionStore = defineStore('selection', () => {
   function selectMany(ids: string[]) {
     const next = new Set(ids.slice(0, MAX_SELECTION))
     selectedIds.value = next
-    primarySelectedId.value = next.size > 0 ? ids[0] : null
+    primarySelectedId.value = next.size > 0 ? (ids[0] ?? null) : null
   }
 
   function clearSelection() {

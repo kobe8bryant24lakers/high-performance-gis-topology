@@ -48,15 +48,16 @@ const { loadVisibleTiles } = useTileLoader()
 function syncViewport() {
   if (!map) return
   const bounds = map.getBounds()
+  if (!bounds) return
   const center = map.getCenter()
   viewportStore.updateViewport({
     zoom: map.getZoom(),
     center: { lng: center.lng, lat: center.lat },
     bounds: {
-      west: bounds.getWest(),
-      south: bounds.getSouth(),
-      east: bounds.getEast(),
-      north: bounds.getNorth(),
+      west: bounds!.getWest(),
+      south: bounds!.getSouth(),
+      east: bounds!.getEast(),
+      north: bounds!.getNorth(),
     },
   })
 }
