@@ -1,9 +1,15 @@
 <template>
   <div class="topology-view">
-    <TopToolbar />
+    <TopToolbar @fly-to="onFlyTo" />
     <div class="main-area">
-      <SidePanel />
+      <SidePanel @fly-to="onFlyTo" />
       <MapView
+        v-if="!viewModeStore.isSchematic"
+        @element-click="onElementClick"
+        @element-hover="onElementHover"
+      />
+      <SchematicView
+        v-else
         @element-click="onElementClick"
         @element-hover="onElementHover"
       />
@@ -15,15 +21,24 @@
 <script setup lang="ts">
 import TopToolbar from '@/components/TopToolbar.vue'
 import MapView from '@/components/MapView.vue'
+import SchematicView from '@/components/SchematicView.vue'
 import SidePanel from '@/components/SidePanel.vue'
 import StatusBar from '@/components/StatusBar.vue'
+import { useViewModeStore } from '@/stores/view-mode'
+import type { NetworkElement } from '@/types/topology'
+
+const viewModeStore = useViewModeStore()
 
 function onElementClick(id: string) {
-  // Selection is handled inside MapView via the selection store
+  // Selection is handled inside views via the selection store
 }
 
 function onElementHover(id: string | null) {
   // Future: tooltip rendering
+}
+
+function onFlyTo(element: NetworkElement) {
+  // Future: animate viewport to element position
 }
 </script>
 
