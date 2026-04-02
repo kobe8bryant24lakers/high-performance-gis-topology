@@ -3,6 +3,7 @@ import {
   generateElements,
   generateLinks,
   elementsInTile,
+  generateClustersForTile,
   resetSeed,
 } from './data-generator'
 import type { NetworkElement, TileElementsResponse, TileLinksResponse } from '@/types/topology'
@@ -22,6 +23,19 @@ export const handlers = [
     const x = Number(params.x)
     const y = Number(params.y)
     const elements = elementsInTile(ALL_ELEMENTS, z, x, y)
+
+    const CLUSTER_ZOOM_THRESHOLD = 12
+    if (z < CLUSTER_ZOOM_THRESHOLD && elements.length > 10) {
+      const clusters = generateClustersForTile(elements, z, x, y)
+      const response: TileElementsResponse = {
+        elements: [],
+        clusters,
+        generation: 1,
+        removedIds: [],
+      }
+      return HttpResponse.json(response)
+    }
+
     const response: TileElementsResponse = {
       elements,
       clusters: [],

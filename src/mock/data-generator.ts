@@ -1,4 +1,4 @@
-import type { NetworkElement, TopologyLink } from '@/types/topology'
+import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
 
 const ELEMENT_TYPES = ['router', 'switch', 'server', 'firewall', 'access-point']
 
@@ -71,4 +71,45 @@ export function elementsInTile(elements: NetworkElement[], z: number, x: number,
   return elements.filter(
     (el) => el.lng >= west && el.lng <= east && el.lat >= south && el.lat <= north,
   )
+}
+
+export function generateClustersForTile(
+  elements: NetworkElement[],
+  z: number,
+  x: number,
+  y: number,
+): TopologyCluster[] {
+  if (elements.length === 0) return []
+
+  const { west, south, east, north } = tileToBBox(z, x, y)
+  const midLng = (west + east) / 2
+  const midLat = (south + north) / 2
+
+  const quadrants: NetworkElement[][] = [[], [], [], []]
+  for (const el of elements) {
+    const qi = (el.lng >= midLng ? 1 : 0) + (el.lat >= midLat ? 2 : 0)
+    quadrants[qi]!.push(el)
+  }
+
+  const clusters: TopologyCluster[] = []
+  const lngs = [(west + midLng) / 2, (midLng + east) / 2, (west + midLng) / 2, (midLng + east) / 2]
+  const lats = [(south + midLat) / 2, (south + midLat) / 2, (midLat + north) / 2, (midLat + north) / 2]
+
+  for (let qi = 0; qi < 4; qi++) {
+    const group = quadrants[qi]!
+    if (group.length === 0) continue
+    const types: Record<string, number> = {}
+    for (const el of group) {
+      types[el.type] = (types[el.type] ?? 0) + 1
+    }
+    clusters.push({
+      id: `cluster-${z}-${x}-${y}-q${qi}`,
+      centroidLng: lngs[qi]!,
+      centroidLat: lats[qi]!,
+      count: group.length,
+      childIds: group.map((el) => el.id),
+      elementTypes: types,
+    })
+  }
+  return clusters
 }
