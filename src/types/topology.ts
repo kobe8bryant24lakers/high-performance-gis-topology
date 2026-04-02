@@ -111,3 +111,11 @@ export function isTopologyCluster(value: unknown): value is TopologyCluster {
     isObject(value.elementTypes)
   )
 }
+
+// --- Filter Types ---
+
+export interface FilterCriteria {
+  types: string[]               // element types to include (empty = all)
+  searchQuery: string           // current search text
+  propertyFilters: Record<string, string>  // key → value filter on element properties
+}
