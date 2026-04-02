@@ -32,8 +32,12 @@ let overlay: MapboxOverlay | null = null
 
 const hoveredId = ref<string | null>(null)
 
-function handleClick(id: string) {
-  selectionStore.selectElement(id)
+function handleClick(id: string, event?: PointerEvent) {
+  if (event?.ctrlKey || event?.metaKey) {
+    selectionStore.toggleElement(id)
+  } else {
+    selectionStore.selectElement(id)
+  }
   emit('elementClick', id)
 }
 
