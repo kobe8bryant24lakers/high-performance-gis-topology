@@ -42,23 +42,28 @@ export function useTileLoader() {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const loadedTiles = new Set<string>()
 
-  async function loadTile(tile: TileCoord) {
+  async function loadTile(tile: TileCoord, gen: number) {
     const tileKey = `${tile.z}/${tile.x}/${tile.y}`
-    const gen = tileService.nextGeneration()
 
-    const [elemResponse, linkResponse] = await Promise.all([
+    const [elemResult, linkResult] = await Promise.allSettled([
       tileService.fetchTileElements(tile.z, tile.x, tile.y, gen),
       tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen),
     ])
 
-    if (elemResponse) {
-      topologyStore.mergeTileElements(tileKey, elemResponse)
+    let applied = false
+
+    if (elemResult.status === 'fulfilled' && elemResult.value) {
+      topologyStore.mergeTileElements(tileKey, elemResult.value)
+      applied = true
     }
-    if (linkResponse) {
-      topologyStore.mergeTileLinks(tileKey, linkResponse)
+    if (linkResult.status === 'fulfilled' && linkResult.value) {
+      topologyStore.mergeTileLinks(tileKey, linkResult.value)
+      applied = true
     }
 
-    loadedTiles.add(tileKey)
+    if (applied) {
+      loadedTiles.add(tileKey)
+    }
   }
 
   function loadVisibleTiles() {
@@ -77,8 +82,9 @@ export function useTileLoader() {
     }
 
     const tilesToLoad = tiles.filter((t) => !loadedTiles.has(`${t.z}/${t.x}/${t.y}`))
+    const gen = tileService.nextGeneration()
     for (const tile of tilesToLoad) {
-      loadTile(tile).catch(() => {})
+      loadTile(tile, gen).catch(() => {})
     }
   }
 
