@@ -25,7 +25,7 @@ export const handlers = [
     const elements = elementsInTile(ALL_ELEMENTS, z, x, y)
 
     const CLUSTER_ZOOM_THRESHOLD = 12
-    if (z < CLUSTER_ZOOM_THRESHOLD && elements.length > 10) {
+    if (z < CLUSTER_ZOOM_THRESHOLD && elements.length > 0) {
       const clusters = generateClustersForTile(elements, z, x, y)
       const response: TileElementsResponse = {
         elements: [],
