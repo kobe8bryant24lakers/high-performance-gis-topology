@@ -177,5 +177,23 @@ export function useTileLoader() {
     },
   )
 
-  return { loadVisibleTiles, tileCache }
+  // Poll heap usage (Chrome-only, best-effort)
+  let heapInterval: ReturnType<typeof setInterval> | null = null
+  if (typeof performance !== 'undefined' && 'memory' in performance) {
+    heapInterval = setInterval(() => {
+      const mem = (performance as any).memory
+      if (mem?.usedJSHeapSize) {
+        const mb = mem.usedJSHeapSize / (1024 * 1024)
+        performanceStore.updateHeapMb(mb)
+        telemetry.emit('heap_mb', mb)
+      }
+    }, 5000)
+  }
+
+  function dispose() {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    if (heapInterval) clearInterval(heapInterval)
+  }
+
+  return { loadVisibleTiles, tileCache, dispose }
 }
