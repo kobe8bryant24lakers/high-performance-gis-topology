@@ -9,13 +9,25 @@
     </div>
     <div class="toolbar-spacer" />
     <div v-if="filterStore.hasActiveFilters" class="filter-chips">
+      <span v-if="filterStore.criteria.searchQuery" class="chip chip-search">
+        search: {{ filterStore.criteria.searchQuery }}
+        <button class="chip-remove" @click="filterStore.setSearchQuery('')">&times;</button>
+      </span>
       <span
         v-for="t in filterStore.criteria.types"
-        :key="t"
+        :key="'type-' + t"
         class="chip"
       >
         {{ t }}
         <button class="chip-remove" @click="filterStore.toggleType(t)">&times;</button>
+      </span>
+      <span
+        v-for="(value, key) in filterStore.criteria.propertyFilters"
+        :key="'prop-' + key"
+        class="chip chip-prop"
+      >
+        {{ key }}={{ value }}
+        <button class="chip-remove" @click="filterStore.removePropertyFilter(String(key))">&times;</button>
       </span>
     </div>
   </header>
@@ -91,6 +103,14 @@ const filterStore = useFilterStore()
   border-radius: 12px;
   font-size: 12px;
   color: #cdd6f4;
+}
+
+.chip-search {
+  background: #45475a;
+}
+
+.chip-prop {
+  background: #3b3f5c;
 }
 
 .chip-remove {
