@@ -26,7 +26,7 @@ export function useDeckLayers(
 
   // Rebuild node/edge arrays only when graph or filters change
   watch(
-    () => [topologyStore.nodeCount, topologyStore.edgeCount, filterStore.criteria.types.length, Object.keys(filterStore.criteria.propertyFilters).length],
+    () => [topologyStore.nodeCount, topologyStore.edgeCount, JSON.stringify(filterStore.criteria.types), JSON.stringify(filterStore.criteria.propertyFilters)],
     () => {
       const nodes: NodeWithStub[] = []
       topologyStore.graph.forEachNode((_id, attrs) => {

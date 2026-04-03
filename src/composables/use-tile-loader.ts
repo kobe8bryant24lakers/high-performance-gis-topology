@@ -101,6 +101,10 @@ export function useTileLoader() {
 
   /** Force reload all tiles (e.g. when filters change) */
   function reloadAllTiles() {
+    // Evict stale data from topology store before clearing loaded set
+    for (const tileKey of loadedTiles) {
+      topologyStore.evictTile(tileKey)
+    }
     loadedTiles.clear()
     loadVisibleTiles()
   }

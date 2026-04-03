@@ -90,7 +90,18 @@ export const useTopologyStore = defineStore('topology', () => {
       if (graph.value.hasEdge(link.id)) {
         const currentVersion = graph.value.getEdgeAttribute(link.id, 'version') as number
         if (link.version > currentVersion) {
-          graph.value.replaceEdgeAttributes(link.id, { ...link })
+          // Directedness change requires drop+recreate (replaceEdgeAttributes can't change edge type)
+          const isCurrentlyDirected = graph.value.isDirected(link.id)
+          if (link.directed !== isCurrentlyDirected) {
+            graph.value.dropEdge(link.id)
+            if (link.directed) {
+              graph.value.addDirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+            } else {
+              graph.value.addUndirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+            }
+          } else {
+            graph.value.replaceEdgeAttributes(link.id, { ...link })
+          }
         }
       } else {
         if (link.directed) {
