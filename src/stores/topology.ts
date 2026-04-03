@@ -127,7 +127,7 @@ export const useTopologyStore = defineStore('topology', () => {
     }
   }
 
-  function evictTile(tileKey: string) {
+  function evictTile(tileKey: string, pinnedNodeIds?: Set<string>) {
     tileGenerations.value.delete(tileKey)
 
     for (const [edgeId, tiles] of edgeTileRefs.value) {
@@ -143,6 +143,8 @@ export const useTopologyStore = defineStore('topology', () => {
     for (const [nodeId, tiles] of nodeTileRefs.value) {
       tiles.delete(tileKey)
       if (tiles.size === 0) {
+        // Skip pinned nodes
+        if (pinnedNodeIds?.has(nodeId)) continue
         if (graph.value.hasNode(nodeId)) {
           graph.value.dropNode(nodeId)
         }

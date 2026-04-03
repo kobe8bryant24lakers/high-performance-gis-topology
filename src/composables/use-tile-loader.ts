@@ -2,7 +2,10 @@ import { watch } from 'vue'
 import { useViewportStore, type ViewportBounds, type TileCoord } from '@/stores/viewport'
 import { useTopologyStore } from '@/stores/topology'
 import { useFilterStore } from '@/stores/filter'
+import { usePerformanceStore } from '@/stores/performance'
 import { TileService } from '@/api/tile-service'
+import { LruTileCache } from '@/utils/lru-tile-cache'
+import { telemetry } from '@/utils/telemetry'
 
 function lngToTileX(lng: number, zoom: number): number {
   return Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
@@ -39,10 +42,11 @@ export function useTileLoader() {
   const viewportStore = useViewportStore()
   const topologyStore = useTopologyStore()
   const filterStore = useFilterStore()
+  const performanceStore = usePerformanceStore()
   const tileService = new TileService()
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
-  const loadedTiles = new Set<string>()
+  const tileCache = new LruTileCache(200, 200_000)
 
   /** Build filter query string for tile fetch URLs */
   function filterQueryString(): string {
@@ -56,19 +60,30 @@ export function useTileLoader() {
     return params.length > 0 ? `?${params.join('&')}` : ''
   }
 
+  function evictTiles(tileKeys: string[]) {
+    for (const key of tileKeys) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+    }
+  }
+
   async function loadTile(tile: TileCoord, gen: number) {
     const tileKey = `${tile.z}/${tile.x}/${tile.y}`
     const qs = filterQueryString()
+    const start = performance.now()
 
     const [elemResult, linkResult] = await Promise.allSettled([
       tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs),
       tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs),
     ])
 
+    telemetry.emit('tile_fetch_ms', performance.now() - start)
+
+    let elementCount = 0
     let applied = false
 
     if (elemResult.status === 'fulfilled' && elemResult.value) {
       topologyStore.mergeTileElements(tileKey, elemResult.value)
+      elementCount = elemResult.value.elements.length + elemResult.value.clusters.length
       applied = true
     }
     if (linkResult.status === 'fulfilled' && linkResult.value) {
@@ -77,8 +92,12 @@ export function useTileLoader() {
     }
 
     if (applied) {
-      loadedTiles.add(tileKey)
+      const evicted = tileCache.touch(tileKey, elementCount)
+      evictTiles(evicted)
     }
+
+    // Update visible element count for degradation
+    performanceStore.visibleElementCount = topologyStore.nodeCount
   }
 
   function loadVisibleTiles() {
@@ -89,27 +108,31 @@ export function useTileLoader() {
     const tiles = viewportStore.visibleTiles
     const newTileKeys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`))
 
-    for (const loaded of loadedTiles) {
-      if (!newTileKeys.has(loaded)) {
-        topologyStore.evictTile(loaded)
-        loadedTiles.delete(loaded)
+    // Evict tiles no longer in the viewport
+    for (const key of [...tileCache.keys()]) {
+      if (!newTileKeys.has(key)) {
+        topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+        tileCache.delete(key)
       }
     }
 
-    const tilesToLoad = tiles.filter((t) => !loadedTiles.has(`${t.z}/${t.x}/${t.y}`))
+    const tilesToLoad = tiles.filter((t) => !tileCache.has(`${t.z}/${t.x}/${t.y}`))
     const gen = tileService.nextGeneration()
     for (const tile of tilesToLoad) {
       loadTile(tile, gen).catch(() => {})
     }
+
+    // Update visible element count
+    performanceStore.visibleElementCount = topologyStore.nodeCount
   }
 
   /** Force reload all tiles (e.g. when filters change) */
   function reloadAllTiles() {
-    // Evict stale data from topology store before clearing loaded set
-    for (const tileKey of loadedTiles) {
-      topologyStore.evictTile(tileKey)
+    // Evict stale data from topology store before clearing cache
+    for (const key of [...tileCache.keys()]) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+      tileCache.delete(key)
     }
-    loadedTiles.clear()
     loadVisibleTiles()
   }
 
@@ -135,5 +158,24 @@ export function useTileLoader() {
     { deep: true },
   )
 
-  return { loadVisibleTiles, loadedTiles }
+  // Memory pressure: aggressive eviction under pressure
+  watch(
+    () => performanceStore.memoryPressure,
+    (pressure) => {
+      if (pressure === 'critical') {
+        // Keep only tiles in the current viewport
+        const currentKeys = new Set(
+          viewportStore.visibleTiles.map((t) => `${t.z}/${t.x}/${t.y}`),
+        )
+        for (const key of [...tileCache.keys()]) {
+          if (!currentKeys.has(key)) {
+            topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+            tileCache.delete(key)
+          }
+        }
+      }
+    },
+  )
+
+  return { loadVisibleTiles, tileCache }
 }
