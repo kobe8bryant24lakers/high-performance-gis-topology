@@ -58,13 +58,25 @@ function syncViewport() {
     zoom: map.getZoom(),
     center: { lng: center.lng, lat: center.lat },
     bounds: {
-      west: bounds!.getWest(),
-      south: bounds!.getSouth(),
-      east: bounds!.getEast(),
-      north: bounds!.getNorth(),
+      west: bounds.getWest(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      north: bounds.getNorth(),
     },
   })
 }
+
+/** Fly to a specific lng/lat position with animation */
+function flyTo(lng: number, lat: number, zoom?: number) {
+  map?.flyTo({
+    center: [lng, lat],
+    zoom: zoom ?? Math.max(map?.getZoom() ?? 12, 12),
+    duration: 1500,
+  })
+}
+
+// Expose flyTo for parent components
+defineExpose({ flyTo })
 
 onMounted(() => {
   const token = import.meta.env.VITE_MAPBOX_TOKEN
@@ -74,11 +86,12 @@ onMounted(() => {
   }
   mapboxgl.accessToken = token
 
+  // Initialize map from viewport store state (preserves context across view toggles)
   map = new mapboxgl.Map({
     container: mapRef.value!,
     style: 'mapbox://styles/mapbox/dark-v11',
-    center: [0, 0],
-    zoom: 2,
+    center: [viewportStore.center.lng, viewportStore.center.lat],
+    zoom: viewportStore.zoom,
   })
 
   overlay = new MapboxOverlay({
