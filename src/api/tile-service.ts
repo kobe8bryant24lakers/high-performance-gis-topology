@@ -21,6 +21,7 @@ export class TileService {
   async fetchTileElements(
     z: number, x: number, y: number,
     requestGeneration: number,
+    queryString: string = '',
   ): Promise<TileElementsResponse | null> {
     const key = this.tileKey(z, x, y, 'elements')
     this.controllers.get(key)?.abort()
@@ -30,7 +31,7 @@ export class TileService {
 
     try {
       const result = await apiGet<TileElementsResponse>(
-        `/api/topology/tiles/${z}/${x}/${y}/elements`,
+        `/api/topology/tiles/${z}/${x}/${y}/elements${queryString}`,
         { signal: controller.signal, maxRetries: 3, baseDelayMs: 0 },
       )
       if (requestGeneration < this.generation) return null
@@ -43,6 +44,7 @@ export class TileService {
   async fetchTileLinks(
     z: number, x: number, y: number,
     requestGeneration: number,
+    queryString: string = '',
   ): Promise<TileLinksResponse | null> {
     const key = this.tileKey(z, x, y, 'links')
     this.controllers.get(key)?.abort()
@@ -52,7 +54,7 @@ export class TileService {
 
     try {
       const result = await apiGet<TileLinksResponse>(
-        `/api/topology/tiles/${z}/${x}/${y}/links`,
+        `/api/topology/tiles/${z}/${x}/${y}/links${queryString}`,
         { signal: controller.signal, maxRetries: 3, baseDelayMs: 0 },
       )
       if (requestGeneration < this.generation) return null

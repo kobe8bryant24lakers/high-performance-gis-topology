@@ -1,6 +1,7 @@
 import { watch } from 'vue'
 import { useViewportStore, type ViewportBounds, type TileCoord } from '@/stores/viewport'
 import { useTopologyStore } from '@/stores/topology'
+import { useFilterStore } from '@/stores/filter'
 import { TileService } from '@/api/tile-service'
 
 function lngToTileX(lng: number, zoom: number): number {
@@ -37,18 +38,31 @@ export function bboxToTiles(bounds: ViewportBounds, zoom: number): TileCoord[] {
 export function useTileLoader() {
   const viewportStore = useViewportStore()
   const topologyStore = useTopologyStore()
+  const filterStore = useFilterStore()
   const tileService = new TileService()
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const loadedTiles = new Set<string>()
 
-  async function loadTile(tile: TileCoord) {
+  /** Build filter query string for tile fetch URLs */
+  function filterQueryString(): string {
+    const params: string[] = []
+    if (filterStore.criteria.types.length > 0) {
+      params.push(`types=${filterStore.criteria.types.join(',')}`)
+    }
+    for (const [key, value] of Object.entries(filterStore.criteria.propertyFilters)) {
+      params.push(`prop.${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    }
+    return params.length > 0 ? `?${params.join('&')}` : ''
+  }
+
+  async function loadTile(tile: TileCoord, generation: number) {
     const tileKey = `${tile.z}/${tile.x}/${tile.y}`
-    const gen = tileService.nextGeneration()
+    const qs = filterQueryString()
 
     const [elemResponse, linkResponse] = await Promise.all([
-      tileService.fetchTileElements(tile.z, tile.x, tile.y, gen),
-      tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen),
+      tileService.fetchTileElements(tile.z, tile.x, tile.y, generation, qs),
+      tileService.fetchTileLinks(tile.z, tile.x, tile.y, generation, qs),
     ])
 
     if (elemResponse) {
@@ -66,6 +80,9 @@ export function useTileLoader() {
 
     tileService.cancelAll()
 
+    // Increment generation ONCE per viewport/filter state change
+    const gen = tileService.nextGeneration()
+
     const tiles = viewportStore.visibleTiles
     const newTileKeys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`))
 
@@ -78,8 +95,14 @@ export function useTileLoader() {
 
     const tilesToLoad = tiles.filter((t) => !loadedTiles.has(`${t.z}/${t.x}/${t.y}`))
     for (const tile of tilesToLoad) {
-      loadTile(tile).catch(() => {})
+      loadTile(tile, gen).catch(() => {})
     }
+  }
+
+  /** Force reload all tiles (e.g. when filters change) */
+  function reloadAllTiles() {
+    loadedTiles.clear()
+    loadVisibleTiles()
   }
 
   function onViewportChange() {
@@ -87,9 +110,20 @@ export function useTileLoader() {
     debounceTimer = setTimeout(loadVisibleTiles, 200)
   }
 
+  // Watch viewport changes
   watch(
     () => [viewportStore.bounds, viewportStore.zoom],
     onViewportChange,
+    { deep: true },
+  )
+
+  // Watch filter changes — reload tiles when filters change
+  watch(
+    () => [filterStore.criteria.types, filterStore.criteria.propertyFilters],
+    () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(reloadAllTiles, 200)
+    },
     { deep: true },
   )
 
