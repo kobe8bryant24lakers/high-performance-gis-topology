@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { usePerformanceStore } from '@/stores/performance'
+import { useTopologyStore } from '@/stores/topology'
 
 const MAX_SELECTION = 500
 
@@ -41,13 +42,16 @@ export const useSelectionStore = defineStore('selection', () => {
 
   const hasSelection = computed(() => selectedIds.value.size > 0)
 
-  // Sync selection to performance store pinned nodes
+  // Sync selection to performance store pinned nodes and prune deferred evictions
   watch(selectedIds, (ids) => {
     const performanceStore = usePerformanceStore()
+    const topologyStore = useTopologyStore()
     performanceStore.clearPins()
     if (ids.size > 0) {
       performanceStore.pinNodes([...ids])
     }
+    // Prune zero-ref nodes that were deferred while previously pinned
+    topologyStore.pruneUnpinnedNodes(performanceStore.pinnedNodeIds)
   })
 
   return {

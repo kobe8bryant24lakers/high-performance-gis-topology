@@ -78,20 +78,22 @@ export function useTileLoader() {
 
     telemetry.emit('tile_fetch_ms', performance.now() - start)
 
+    const elemOk = elemResult.status === 'fulfilled' && elemResult.value
+    const linkOk = linkResult.status === 'fulfilled' && linkResult.value
+
     let elementCount = 0
-    let applied = false
 
-    if (elemResult.status === 'fulfilled' && elemResult.value) {
-      topologyStore.mergeTileElements(tileKey, elemResult.value)
-      elementCount = elemResult.value.elements.length + elemResult.value.clusters.length
-      applied = true
+    if (elemOk) {
+      topologyStore.mergeTileElements(tileKey, elemResult.value!)
+      elementCount = elemResult.value!.elements.length + elemResult.value!.clusters.length
     }
-    if (linkResult.status === 'fulfilled' && linkResult.value) {
-      topologyStore.mergeTileLinks(tileKey, linkResult.value)
-      applied = true
+    if (linkOk) {
+      topologyStore.mergeTileLinks(tileKey, linkResult.value!)
     }
 
-    if (applied) {
+    // Only mark tile as fully loaded when both payloads succeed;
+    // partial failures leave the tile uncached so it will be retried.
+    if (elemOk && linkOk) {
       const evicted = tileCache.touch(tileKey, elementCount)
       evictTiles(evicted)
     }
@@ -106,15 +108,9 @@ export function useTileLoader() {
     tileService.cancelAll()
 
     const tiles = viewportStore.visibleTiles
-    const newTileKeys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`))
 
-    // Evict tiles no longer in the viewport
-    for (const key of [...tileCache.keys()]) {
-      if (!newTileKeys.has(key)) {
-        topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
-        tileCache.delete(key)
-      }
-    }
+    // Don't eagerly evict offscreen tiles — let LRU/budget pressure handle it.
+    // This preserves cached data for pan-back scenarios.
 
     const tilesToLoad = tiles.filter((t) => !tileCache.has(`${t.z}/${t.x}/${t.y}`))
     const gen = tileService.nextGeneration()
