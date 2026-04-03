@@ -11,6 +11,7 @@ import { Deck, OrthographicView } from '@deck.gl/core'
 import { useSelectionStore } from '@/stores/selection'
 import { useForceLayout } from '@/composables/use-force-layout'
 import { useDeckLayers } from '@/composables/use-deck-layers'
+import type { NetworkElement } from '@/types/topology'
 
 const emit = defineEmits<{
   elementClick: [id: string]
@@ -23,9 +24,13 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const selectionStore = useSelectionStore()
 const { positions, isComputing, runLayout, updatePosition, dispose } = useForceLayout()
 
-let deck: Deck<any> | null = null
+let deck: InstanceType<typeof Deck> | null = null
 let isDragging = false
 let dragNodeId: string | null = null
+
+// Drag-box selection state
+let isBoxSelecting = false
+let boxStart: [number, number] | null = null
 
 function handleClick(id: string, event?: PointerEvent) {
   if (!isDragging) {
@@ -44,6 +49,75 @@ function handleHover(id: string | null) {
 
 const { layers } = useDeckLayers(handleClick, handleHover, () => positions.value)
 
+function handleDragStart(info: Record<string, unknown>): boolean {
+  const obj = info.object as NetworkElement | undefined
+  if (obj?.id) {
+    // Dragging a node — reposition mode
+    isDragging = true
+    dragNodeId = obj.id
+
+    // If dragging a selected node, move all selected nodes together
+    return true
+  }
+  // No node — start drag-box selection
+  const coordinate = info.coordinate as [number, number] | undefined
+  if (coordinate) {
+    isBoxSelecting = true
+    boxStart = coordinate
+  }
+  return false
+}
+
+function handleDrag(info: Record<string, unknown>): void {
+  const coordinate = info.coordinate as [number, number] | undefined
+  if (isDragging && dragNodeId && coordinate) {
+    // Move the dragged node
+    const dx = coordinate[0] - (positions.value.get(dragNodeId)?.x ?? 0)
+    const dy = coordinate[1] - (positions.value.get(dragNodeId)?.y ?? 0)
+
+    // If the node is selected and there are multiple selections, move them all
+    if (selectionStore.selectedIds.has(dragNodeId) && selectionStore.selectedIds.size > 1) {
+      for (const id of selectionStore.selectedIds) {
+        const pos = positions.value.get(id)
+        if (pos) {
+          positions.value.set(id, { ...pos, x: pos.x + dx, y: pos.y + dy })
+        }
+      }
+      positions.value = new Map(positions.value)
+    } else {
+      updatePosition(dragNodeId, coordinate[0], coordinate[1])
+    }
+  }
+}
+
+function handleDragEnd(info: Record<string, unknown>): void {
+  if (isBoxSelecting && boxStart) {
+    const coordinate = info.coordinate as [number, number] | undefined
+    if (coordinate) {
+      // Select all nodes within the box
+      const minX = Math.min(boxStart[0], coordinate[0])
+      const maxX = Math.max(boxStart[0], coordinate[0])
+      const minY = Math.min(boxStart[1], coordinate[1])
+      const maxY = Math.max(boxStart[1], coordinate[1])
+
+      const selectedIds: string[] = []
+      for (const [id, pos] of positions.value) {
+        if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
+          selectedIds.push(id)
+        }
+      }
+      if (selectedIds.length > 0) {
+        selectionStore.selectMany(selectedIds)
+      }
+    }
+    isBoxSelecting = false
+    boxStart = null
+  }
+
+  setTimeout(() => { isDragging = false }, 50)
+  dragNodeId = null
+}
+
 onMounted(() => {
   if (!canvasRef.value) return
 
@@ -56,23 +130,9 @@ onMounted(() => {
     } as any,
     controller: true,
     layers: layers.value,
-    onDragStart: (info: any) => {
-      if (info.object && info.object.id) {
-        isDragging = true
-        dragNodeId = info.object.id
-        return true
-      }
-      return false
-    },
-    onDrag: (info: any) => {
-      if (isDragging && dragNodeId && info.coordinate) {
-        updatePosition(dragNodeId, info.coordinate[0], info.coordinate[1])
-      }
-    },
-    onDragEnd: () => {
-      setTimeout(() => { isDragging = false }, 50)
-      dragNodeId = null
-    },
+    onDragStart: handleDragStart as any,
+    onDrag: handleDrag as any,
+    onDragEnd: handleDragEnd as any,
   })
 
   runLayout()
