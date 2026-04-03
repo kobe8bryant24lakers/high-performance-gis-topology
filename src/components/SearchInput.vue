@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useFilterStore } from '@/stores/filter'
 import { useSearch } from '@/composables/use-search'
 import type { NetworkElement } from '@/types/topology'
@@ -39,7 +40,8 @@ defineEmits<{
 }>()
 
 const filterStore = useFilterStore()
-const { results, total, isSearching } = useSearch()
+const searchStore = useSearch()
+const { results, total, isSearching } = storeToRefs(searchStore)
 
 const query = ref(filterStore.criteria.searchQuery)
 

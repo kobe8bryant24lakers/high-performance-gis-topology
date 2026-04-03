@@ -73,6 +73,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useSearch } from '@/composables/use-search'
@@ -85,7 +86,8 @@ defineEmits<{
 
 const topologyStore = useTopologyStore()
 const selectionStore = useSelectionStore()
-const { results: searchResults } = useSearch()
+const searchStore = useSearch()
+const { results: searchResults } = storeToRefs(searchStore)
 
 const activeTab = ref<'detail' | 'search' | 'filter'>('detail')
 

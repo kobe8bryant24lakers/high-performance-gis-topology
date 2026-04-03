@@ -1,5 +1,5 @@
-// src/composables/use-search.ts
 import { ref, watch } from 'vue'
+import { defineStore } from 'pinia'
 import { apiGet } from '@/api/client'
 import { useFilterStore } from '@/stores/filter'
 import type { NetworkElement, SearchResponse } from '@/types/topology'
@@ -16,7 +16,8 @@ export async function performSearch(
   )
 }
 
-export function useSearch() {
+/** Singleton search store — avoids duplicate watchers/API calls across components */
+export const useSearchStore = defineStore('search', () => {
   const filterStore = useFilterStore()
 
   const results = ref<NetworkElement[]>([])
@@ -49,7 +50,6 @@ export function useSearch() {
     }
   }
 
-  // Watch filter store search query with 300ms debounce
   watch(
     () => filterStore.criteria.searchQuery,
     (query) => {
@@ -64,4 +64,9 @@ export function useSearch() {
   }
 
   return { results, total, isSearching, search, clearResults }
+})
+
+/** Convenience wrapper for backward compatibility */
+export function useSearch() {
+  return useSearchStore()
 }
