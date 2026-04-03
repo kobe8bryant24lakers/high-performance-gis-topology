@@ -9,8 +9,14 @@ import {
 import type { NetworkElement, TileElementsResponse, TileLinksResponse } from '@/types/topology'
 
 resetSeed(42)
-const ALL_ELEMENTS = generateElements(5000)
-const ALL_LINKS = generateLinks(ALL_ELEMENTS, 3000)
+let ALL_ELEMENTS = generateElements(5000)
+let ALL_LINKS = generateLinks(ALL_ELEMENTS, 3000)
+
+export function resetMockData(elementCount: number, linkCount?: number) {
+  resetSeed(42)
+  ALL_ELEMENTS = generateElements(elementCount)
+  ALL_LINKS = generateLinks(ALL_ELEMENTS, linkCount ?? Math.floor(elementCount * 0.6))
+}
 
 function linksForElements(elements: NetworkElement[]) {
   const ids = new Set(elements.map((e) => e.id))
