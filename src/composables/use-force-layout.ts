@@ -1,16 +1,17 @@
-// src/composables/use-force-layout.ts
 import { ref, watch, type Ref } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { useViewModeStore } from '@/stores/view-mode'
 import { computeLayout, type LayoutInput, type LayoutPosition } from '@/workers/layout-worker'
+import type { NetworkElement } from '@/types/topology'
 
 export function extractLayoutInput(topologyStore: ReturnType<typeof useTopologyStore>): LayoutInput {
   const nodes: LayoutInput['nodes'] = []
   const edges: LayoutInput['edges'] = []
 
   topologyStore.graph.forEachNode((id, attrs) => {
-    if ((attrs as any).isStub) return
-    nodes.push({ id, x: (attrs as any).lng ?? 0, y: (attrs as any).lat ?? 0 })
+    const el = attrs as NetworkElement & { isStub?: boolean }
+    if (el.isStub) return
+    nodes.push({ id, x: el.lng ?? 0, y: el.lat ?? 0 })
   })
 
   const nodeIds = new Set(nodes.map((n) => n.id))
@@ -32,6 +33,7 @@ export function useForceLayout() {
   const isComputing = ref(false)
 
   let worker: Worker | null = null
+  let layoutDebounce: ReturnType<typeof setTimeout> | null = null
 
   function runLayout() {
     if (!viewModeStore.isSchematic) return
@@ -42,9 +44,17 @@ export function useForceLayout() {
       return
     }
 
+    // Preserve existing positions for nodes that already have them (incremental layout)
+    for (const node of input.nodes) {
+      const existing = positions.value.get(node.id)
+      if (existing) {
+        node.x = existing.x
+        node.y = existing.y
+      }
+    }
+
     isComputing.value = true
 
-    // Use Web Worker if available, fall back to synchronous
     if (typeof Worker !== 'undefined' && !import.meta.env.TEST) {
       worker?.terminate()
       worker = new Worker(new URL('../workers/layout-worker.ts', import.meta.url), { type: 'module' })
@@ -55,11 +65,15 @@ export function useForceLayout() {
       }
       worker.postMessage(input)
     } else {
-      // Synchronous fallback for tests
       const result = computeLayout(input)
       positions.value = new Map(result.positions.map((p) => [p.id, p]))
       isComputing.value = false
     }
+  }
+
+  function debouncedRunLayout() {
+    if (layoutDebounce) clearTimeout(layoutDebounce)
+    layoutDebounce = setTimeout(runLayout, 300)
   }
 
   function getPosition(id: string): LayoutPosition | undefined {
@@ -77,12 +91,22 @@ export function useForceLayout() {
   function dispose() {
     worker?.terminate()
     worker = null
+    if (layoutDebounce) clearTimeout(layoutDebounce)
   }
 
+  // Re-run layout when switching to schematic mode
   watch(
     () => viewModeStore.isSchematic,
     (isSchematic) => {
       if (isSchematic) runLayout()
+    },
+  )
+
+  // Re-run layout when graph content changes while in schematic mode
+  watch(
+    () => [topologyStore.nodeCount, topologyStore.edgeCount],
+    () => {
+      if (viewModeStore.isSchematic) debouncedRunLayout()
     },
   )
 
