@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { usePerformanceStore } from '@/stores/performance'
 
 const MAX_SELECTION = 500
 
@@ -39,6 +40,15 @@ export const useSelectionStore = defineStore('selection', () => {
   }
 
   const hasSelection = computed(() => selectedIds.value.size > 0)
+
+  // Sync selection to performance store pinned nodes
+  watch(selectedIds, (ids) => {
+    const performanceStore = usePerformanceStore()
+    performanceStore.clearPins()
+    if (ids.size > 0) {
+      performanceStore.pinNodes([...ids])
+    }
+  })
 
   return {
     selectedIds, primarySelectedId, hasSelection,
