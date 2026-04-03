@@ -22,7 +22,11 @@ export const useTopologyStore = defineStore('topology', () => {
   const edgeCount = computed(() => graph.value.size)
   const clusterCount = computed(() => clusters.value.size)
 
-  function mergeTileElements(tileKey: string, response: TileElementsResponse) {
+  function mergeTileElements(tileKey: string, response: TileElementsResponse): boolean {
+    const lastGen = tileGenerations.value.get(tileKey)
+    if (lastGen !== undefined && response.generation < lastGen) {
+      return false
+    }
     tileGenerations.value.set(tileKey, response.generation)
 
     for (const id of response.removedIds) {
@@ -56,6 +60,7 @@ export const useTopologyStore = defineStore('topology', () => {
       }
       clusterTileRefs.value.get(cluster.id)!.add(tileKey)
     }
+    return true
   }
 
   function mergeTileLinks(tileKey: string, response: TileLinksResponse) {
@@ -80,6 +85,10 @@ export const useTopologyStore = defineStore('topology', () => {
           isStub: true,
         })
       }
+      if (!nodeTileRefs.value.has(stub.id)) {
+        nodeTileRefs.value.set(stub.id, new Set())
+      }
+      nodeTileRefs.value.get(stub.id)!.add(tileKey)
     }
 
     for (const link of response.links) {

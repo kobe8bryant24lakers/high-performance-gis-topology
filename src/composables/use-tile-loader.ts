@@ -56,32 +56,35 @@ export function useTileLoader() {
     return params.length > 0 ? `?${params.join('&')}` : ''
   }
 
-  async function loadTile(tile: TileCoord, generation: number) {
+  async function loadTile(tile: TileCoord, gen: number) {
     const tileKey = `${tile.z}/${tile.x}/${tile.y}`
     const qs = filterQueryString()
 
-    const [elemResponse, linkResponse] = await Promise.all([
-      tileService.fetchTileElements(tile.z, tile.x, tile.y, generation, qs),
-      tileService.fetchTileLinks(tile.z, tile.x, tile.y, generation, qs),
+    const [elemResult, linkResult] = await Promise.allSettled([
+      tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs),
+      tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs),
     ])
 
-    if (elemResponse) {
-      topologyStore.mergeTileElements(tileKey, elemResponse)
+    let applied = false
+
+    if (elemResult.status === 'fulfilled' && elemResult.value) {
+      topologyStore.mergeTileElements(tileKey, elemResult.value)
+      applied = true
     }
-    if (linkResponse) {
-      topologyStore.mergeTileLinks(tileKey, linkResponse)
+    if (linkResult.status === 'fulfilled' && linkResult.value) {
+      topologyStore.mergeTileLinks(tileKey, linkResult.value)
+      applied = true
     }
 
-    loadedTiles.add(tileKey)
+    if (applied) {
+      loadedTiles.add(tileKey)
+    }
   }
 
   function loadVisibleTiles() {
     if (!viewportStore.bounds) return
 
     tileService.cancelAll()
-
-    // Increment generation ONCE per viewport/filter state change
-    const gen = tileService.nextGeneration()
 
     const tiles = viewportStore.visibleTiles
     const newTileKeys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`))
@@ -94,6 +97,7 @@ export function useTileLoader() {
     }
 
     const tilesToLoad = tiles.filter((t) => !loadedTiles.has(`${t.z}/${t.x}/${t.y}`))
+    const gen = tileService.nextGeneration()
     for (const tile of tilesToLoad) {
       loadTile(tile, gen).catch(() => {})
     }
