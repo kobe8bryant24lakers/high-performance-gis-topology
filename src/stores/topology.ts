@@ -93,8 +93,11 @@ export const useTopologyStore = defineStore('topology', () => {
           graph.value.replaceEdgeAttributes(link.id, { ...link })
         }
       } else {
-        const edgeType = link.directed ? 'directed' : 'undirected'
-        graph.value.addEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link, edgeType })
+        if (link.directed) {
+          graph.value.addDirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+        } else {
+          graph.value.addUndirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+        }
       }
 
       if (!edgeTileRefs.value.has(link.id)) {
