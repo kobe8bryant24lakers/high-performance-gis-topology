@@ -4,6 +4,7 @@ import Graph from 'graphology'
 import type {
   NetworkElement,
   TopologyLink,
+  TopologyCluster,
   TileElementsResponse,
   TileLinksResponse,
 } from '@/types/topology'
@@ -14,9 +15,12 @@ export const useTopologyStore = defineStore('topology', () => {
   const nodeTileRefs = ref(new Map<string, Set<string>>())
   const edgeTileRefs = ref(new Map<string, Set<string>>())
   const tileGenerations = ref(new Map<string, number>())
+  const clusters = ref(new Map<string, TopologyCluster>())
+  const clusterTileRefs = ref(new Map<string, Set<string>>())
 
   const nodeCount = computed(() => graph.value.order)
   const edgeCount = computed(() => graph.value.size)
+  const clusterCount = computed(() => clusters.value.size)
 
   function mergeTileElements(tileKey: string, response: TileElementsResponse): boolean {
     const lastGen = tileGenerations.value.get(tileKey)
@@ -46,6 +50,15 @@ export const useTopologyStore = defineStore('topology', () => {
         nodeTileRefs.value.set(el.id, new Set())
       }
       nodeTileRefs.value.get(el.id)!.add(tileKey)
+    }
+
+    // Handle clusters from the response
+    for (const cluster of response.clusters) {
+      clusters.value.set(cluster.id, cluster)
+      if (!clusterTileRefs.value.has(cluster.id)) {
+        clusterTileRefs.value.set(cluster.id, new Set())
+      }
+      clusterTileRefs.value.get(cluster.id)!.add(tileKey)
     }
     return true
   }
@@ -86,11 +99,25 @@ export const useTopologyStore = defineStore('topology', () => {
       if (graph.value.hasEdge(link.id)) {
         const currentVersion = graph.value.getEdgeAttribute(link.id, 'version') as number
         if (link.version > currentVersion) {
-          graph.value.replaceEdgeAttributes(link.id, { ...link })
+          // Directedness change requires drop+recreate (replaceEdgeAttributes can't change edge type)
+          const isCurrentlyDirected = graph.value.isDirected(link.id)
+          if (link.directed !== isCurrentlyDirected) {
+            graph.value.dropEdge(link.id)
+            if (link.directed) {
+              graph.value.addDirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+            } else {
+              graph.value.addUndirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+            }
+          } else {
+            graph.value.replaceEdgeAttributes(link.id, { ...link })
+          }
         }
       } else {
-        const edgeType = link.directed ? 'directed' : 'undirected'
-        graph.value.addEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link, edgeType })
+        if (link.directed) {
+          graph.value.addDirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+        } else {
+          graph.value.addUndirectedEdgeWithKey(link.id, link.sourceId, link.targetId, { ...link })
+        }
       }
 
       if (!edgeTileRefs.value.has(link.id)) {
@@ -122,6 +149,15 @@ export const useTopologyStore = defineStore('topology', () => {
         nodeTileRefs.value.delete(nodeId)
       }
     }
+
+    // Evict clusters with no remaining tile refs
+    for (const [clusterId, tiles] of clusterTileRefs.value) {
+      tiles.delete(tileKey)
+      if (tiles.size === 0) {
+        clusters.value.delete(clusterId)
+        clusterTileRefs.value.delete(clusterId)
+      }
+    }
   }
 
   function getElement(id: string): NetworkElement | null {
@@ -129,16 +165,27 @@ export const useTopologyStore = defineStore('topology', () => {
     return graph.value.getNodeAttributes(id) as unknown as NetworkElement
   }
 
+  function getCluster(id: string): TopologyCluster | null {
+    return clusters.value.get(id) ?? null
+  }
+
+  function getClusters(): TopologyCluster[] {
+    return [...clusters.value.values()]
+  }
+
   function clear() {
     graph.value.clear()
     nodeTileRefs.value.clear()
     edgeTileRefs.value.clear()
     tileGenerations.value.clear()
+    clusters.value.clear()
+    clusterTileRefs.value.clear()
   }
 
   return {
     graph, nodeTileRefs, edgeTileRefs, tileGenerations,
-    nodeCount, edgeCount,
-    mergeTileElements, mergeTileLinks, evictTile, getElement, clear,
+    clusters, clusterTileRefs,
+    nodeCount, edgeCount, clusterCount,
+    mergeTileElements, mergeTileLinks, evictTile, getElement, getCluster, getClusters, clear,
   }
 })

@@ -1,6 +1,7 @@
 import { watch } from 'vue'
 import { useViewportStore, type ViewportBounds, type TileCoord } from '@/stores/viewport'
 import { useTopologyStore } from '@/stores/topology'
+import { useFilterStore } from '@/stores/filter'
 import { TileService } from '@/api/tile-service'
 
 function lngToTileX(lng: number, zoom: number): number {
@@ -37,17 +38,31 @@ export function bboxToTiles(bounds: ViewportBounds, zoom: number): TileCoord[] {
 export function useTileLoader() {
   const viewportStore = useViewportStore()
   const topologyStore = useTopologyStore()
+  const filterStore = useFilterStore()
   const tileService = new TileService()
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const loadedTiles = new Set<string>()
 
+  /** Build filter query string for tile fetch URLs */
+  function filterQueryString(): string {
+    const params: string[] = []
+    if (filterStore.criteria.types.length > 0) {
+      params.push(`types=${filterStore.criteria.types.join(',')}`)
+    }
+    for (const [key, value] of Object.entries(filterStore.criteria.propertyFilters)) {
+      params.push(`prop.${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    }
+    return params.length > 0 ? `?${params.join('&')}` : ''
+  }
+
   async function loadTile(tile: TileCoord, gen: number) {
     const tileKey = `${tile.z}/${tile.x}/${tile.y}`
+    const qs = filterQueryString()
 
     const [elemResult, linkResult] = await Promise.allSettled([
-      tileService.fetchTileElements(tile.z, tile.x, tile.y, gen),
-      tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen),
+      tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs),
+      tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs),
     ])
 
     let applied = false
@@ -88,14 +103,35 @@ export function useTileLoader() {
     }
   }
 
+  /** Force reload all tiles (e.g. when filters change) */
+  function reloadAllTiles() {
+    // Evict stale data from topology store before clearing loaded set
+    for (const tileKey of loadedTiles) {
+      topologyStore.evictTile(tileKey)
+    }
+    loadedTiles.clear()
+    loadVisibleTiles()
+  }
+
   function onViewportChange() {
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(loadVisibleTiles, 200)
   }
 
+  // Watch viewport changes
   watch(
     () => [viewportStore.bounds, viewportStore.zoom],
     onViewportChange,
+    { deep: true },
+  )
+
+  // Watch filter changes — reload tiles when filters change
+  watch(
+    () => [filterStore.criteria.types, filterStore.criteria.propertyFilters],
+    () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(reloadAllTiles, 200)
+    },
     { deep: true },
   )
 

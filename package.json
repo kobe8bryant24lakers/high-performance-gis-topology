@@ -15,6 +15,7 @@
     "@deck.gl/core": "^9.2.11",
     "@deck.gl/layers": "^9.2.11",
     "@deck.gl/mapbox": "^9.2.11",
+    "d3-force": "^3.0.0",
     "graphology": "^0.26.0",
     "graphology-types": "^0.24.8",
     "mapbox-gl": "^3.20.0",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
+    "@types/d3-force": "^3.0.10",
     "@types/jsdom": "^28.0.1",
     "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^24.12.0",
