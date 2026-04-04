@@ -4,6 +4,7 @@ import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
+import { usePerformanceStore } from '@/stores/performance'
 import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
 
@@ -19,6 +20,7 @@ export function useDeckLayers(
   const selectionStore = useSelectionStore()
   const viewModeStore = useViewModeStore()
   const filterStore = useFilterStore()
+  const performanceStore = usePerformanceStore()
 
   // Cache collected data to avoid rebuilding on every selection/position change
   const cachedNodes = shallowRef<NodeWithStub[]>([])
@@ -63,6 +65,7 @@ export function useDeckLayers(
     const allLayers: any[] = []
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
+    const { hoverEnabled, pickEnabled } = performanceStore
 
     // Link layer
     allLayers.push(
@@ -97,13 +100,17 @@ export function useDeckLayers(
           return [0, 128, 255, 200]
         },
         radiusUnits: 'pixels' as const,
-        pickable: true,
-        onClick: (info: { object?: NetworkElement; srcEvent?: PointerEvent }) => {
-          if (info.object) onElementClick(info.object.id, info.srcEvent)
-        },
-        onHover: (info: { object?: NetworkElement }) => {
-          onElementHover(info.object?.id ?? null)
-        },
+        pickable: pickEnabled,
+        onClick: pickEnabled
+          ? (info: { object?: NetworkElement; srcEvent?: PointerEvent }) => {
+              if (info.object) onElementClick(info.object.id, info.srcEvent)
+            }
+          : undefined,
+        onHover: hoverEnabled
+          ? (info: { object?: NetworkElement }) => {
+              onElementHover(info.object?.id ?? null)
+            }
+          : undefined,
         updateTriggers: {
           getFillColor: [selectionStore.selectedIds],
           getPosition: [viewModeStore.mode, layoutPositions?.()],

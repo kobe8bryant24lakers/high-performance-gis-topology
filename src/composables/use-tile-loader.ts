@@ -1,8 +1,11 @@
-import { watch } from 'vue'
+import { watch, onScopeDispose } from 'vue'
 import { useViewportStore, type ViewportBounds, type TileCoord } from '@/stores/viewport'
 import { useTopologyStore } from '@/stores/topology'
 import { useFilterStore } from '@/stores/filter'
+import { usePerformanceStore } from '@/stores/performance'
 import { TileService } from '@/api/tile-service'
+import { LruTileCache } from '@/utils/lru-tile-cache'
+import { telemetry } from '@/utils/telemetry'
 
 function lngToTileX(lng: number, zoom: number): number {
   return Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
@@ -35,14 +38,60 @@ export function bboxToTiles(bounds: ViewportBounds, zoom: number): TileCoord[] {
   return tiles
 }
 
+export interface TileLoadState {
+  elementsLoaded: boolean
+  linksLoaded: boolean
+  elementCount: number
+  elementRetryCount: number
+  linkRetryCount: number
+  nextElementRetryAt: number
+  nextLinkRetryAt: number
+}
+
+const TILE_ENDPOINT_MAX_RETRIES = 5
+const TILE_RETRY_BASE_DELAY_MS = 500
+const TILE_RETRY_MAX_DELAY_MS = 30_000
+const TILE_PROBE_INTERVAL_MS = 60_000
+
+function tileKeyFromCoord(tile: TileCoord): string {
+  return `${tile.z}/${tile.x}/${tile.y}`
+}
+
+export function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true
+  // Handle non-DOMException abort shapes (wrapped fetch clients, polyfills)
+  if (err && typeof err === 'object' && 'name' in err && (err as any).name === 'AbortError') return true
+  return false
+}
+
+export function computeTileRetryDelayMs(retryCount: number): number {
+  const exp = Math.max(0, retryCount - 1)
+  return Math.min(TILE_RETRY_BASE_DELAY_MS * Math.pow(2, exp), TILE_RETRY_MAX_DELAY_MS)
+}
+
+export function computeVisibleElementCount(
+  visibleTileKeys: Iterable<string>,
+  tileStates: ReadonlyMap<string, TileLoadState>,
+): number {
+  let total = 0
+  for (const key of visibleTileKeys) {
+    const state = tileStates.get(key)
+    if (!state || !state.elementsLoaded) continue
+    total += state.elementCount
+  }
+  return total
+}
+
 export function useTileLoader() {
   const viewportStore = useViewportStore()
   const topologyStore = useTopologyStore()
   const filterStore = useFilterStore()
+  const performanceStore = usePerformanceStore()
   const tileService = new TileService()
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
-  const loadedTiles = new Set<string>()
+  const tileCache = new LruTileCache(200, 200_000)
+  const tileLoadStates = new Map<string, TileLoadState>()
 
   /** Build filter query string for tile fetch URLs */
   function filterQueryString(): string {
@@ -56,29 +105,134 @@ export function useTileLoader() {
     return params.length > 0 ? `?${params.join('&')}` : ''
   }
 
+  function evictTiles(tileKeys: string[]) {
+    for (const key of tileKeys) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+      tileLoadStates.delete(key)
+    }
+  }
+
+  function getOrCreateTileState(tileKey: string): TileLoadState {
+    const existing = tileLoadStates.get(tileKey)
+    if (existing) return existing
+
+    const created: TileLoadState = {
+      elementsLoaded: false,
+      linksLoaded: false,
+      elementCount: 0,
+      elementRetryCount: 0,
+      linkRetryCount: 0,
+      nextElementRetryAt: 0,
+      nextLinkRetryAt: 0,
+    }
+    tileLoadStates.set(tileKey, created)
+    return created
+  }
+
+  function shouldAttemptTileLoad(tileKey: string, now: number): boolean {
+    const state = tileLoadStates.get(tileKey)
+    if (!state) return !tileCache.has(tileKey)
+
+    const shouldFetchElements = !state.elementsLoaded
+      && now >= state.nextElementRetryAt
+    const shouldFetchLinks = !state.linksLoaded
+      && now >= state.nextLinkRetryAt
+
+    return shouldFetchElements || shouldFetchLinks
+  }
+
+  function recordEndpointFailure(
+    state: TileLoadState,
+    endpoint: 'elements' | 'links',
+    now: number,
+  ) {
+    if (endpoint === 'elements') {
+      state.elementRetryCount += 1
+      if (state.elementRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
+        // Switch to slow probe interval instead of giving up permanently
+        state.nextElementRetryAt = now + TILE_PROBE_INTERVAL_MS
+        if (state.elementRetryCount === TILE_ENDPOINT_MAX_RETRIES) {
+          telemetry.emit('tile_endpoint_max_retries', 1)
+        }
+        return
+      }
+      state.nextElementRetryAt = now + computeTileRetryDelayMs(state.elementRetryCount)
+      return
+    }
+
+    state.linkRetryCount += 1
+    if (state.linkRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
+      state.nextLinkRetryAt = now + TILE_PROBE_INTERVAL_MS
+      if (state.linkRetryCount === TILE_ENDPOINT_MAX_RETRIES) {
+        telemetry.emit('tile_endpoint_max_retries', 1)
+      }
+      return
+    }
+    state.nextLinkRetryAt = now + computeTileRetryDelayMs(state.linkRetryCount)
+  }
+
+  function updateVisibleElementCount(tiles: TileCoord[] = viewportStore.visibleTiles) {
+    const visibleKeys = tiles.map(tileKeyFromCoord)
+    performanceStore.visibleElementCount = computeVisibleElementCount(visibleKeys, tileLoadStates)
+  }
+
   async function loadTile(tile: TileCoord, gen: number) {
-    const tileKey = `${tile.z}/${tile.x}/${tile.y}`
+    const tileKey = tileKeyFromCoord(tile)
+    const state = getOrCreateTileState(tileKey)
+    const now = Date.now()
+    const fetchElements = !state.elementsLoaded
+      && now >= state.nextElementRetryAt
+    const fetchLinks = !state.linksLoaded
+      && now >= state.nextLinkRetryAt
+    if (!fetchElements && !fetchLinks) return
+
     const qs = filterQueryString()
+    const start = performance.now()
 
     const [elemResult, linkResult] = await Promise.allSettled([
-      tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs),
-      tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs),
+      fetchElements
+        ? tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs)
+        : Promise.resolve(null),
+      fetchLinks
+        ? tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs)
+        : Promise.resolve(null),
     ])
 
-    let applied = false
+    telemetry.emit('tile_fetch_ms', performance.now() - start)
 
-    if (elemResult.status === 'fulfilled' && elemResult.value) {
-      topologyStore.mergeTileElements(tileKey, elemResult.value)
-      applied = true
-    }
-    if (linkResult.status === 'fulfilled' && linkResult.value) {
-      topologyStore.mergeTileLinks(tileKey, linkResult.value)
-      applied = true
+    const elemOk = fetchElements
+      && elemResult.status === 'fulfilled'
+      && !!elemResult.value
+    if (elemOk && elemResult.status === 'fulfilled') {
+      topologyStore.mergeTileElements(tileKey, elemResult.value!)
+      state.elementsLoaded = true
+      state.elementRetryCount = 0
+      state.nextElementRetryAt = 0
+      state.elementCount = elemResult.value!.elements.length + elemResult.value!.clusters.length
+    } else if (fetchElements && elemResult.status === 'rejected' && !isAbortError(elemResult.reason)) {
+      recordEndpointFailure(state, 'elements', now)
     }
 
-    if (applied) {
-      loadedTiles.add(tileKey)
+    const linkOk = fetchLinks
+      && linkResult.status === 'fulfilled'
+      && !!linkResult.value
+    if (linkOk && linkResult.status === 'fulfilled') {
+      topologyStore.mergeTileLinks(tileKey, linkResult.value!)
+      state.linksLoaded = true
+      state.linkRetryCount = 0
+      state.nextLinkRetryAt = 0
+    } else if (fetchLinks && linkResult.status === 'rejected' && !isAbortError(linkResult.reason)) {
+      recordEndpointFailure(state, 'links', now)
     }
+
+    // Cache tiles as soon as we have any successful payload to avoid uncapped hot-loop retries.
+    // Retry scheduling for failed endpoints is tracked separately in tileLoadStates.
+    if (elemOk || linkOk) {
+      const evicted = tileCache.touch(tileKey, state.elementCount)
+      evictTiles(evicted)
+    }
+
+    updateVisibleElementCount()
   }
 
   function loadVisibleTiles() {
@@ -87,29 +241,28 @@ export function useTileLoader() {
     tileService.cancelAll()
 
     const tiles = viewportStore.visibleTiles
-    const newTileKeys = new Set(tiles.map((t) => `${t.z}/${t.x}/${t.y}`))
 
-    for (const loaded of loadedTiles) {
-      if (!newTileKeys.has(loaded)) {
-        topologyStore.evictTile(loaded)
-        loadedTiles.delete(loaded)
-      }
-    }
+    // Don't eagerly evict offscreen tiles — let LRU/budget pressure handle it.
+    // This preserves cached data for pan-back scenarios.
 
-    const tilesToLoad = tiles.filter((t) => !loadedTiles.has(`${t.z}/${t.x}/${t.y}`))
+    const now = Date.now()
+    const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(tileKeyFromCoord(t), now))
     const gen = tileService.nextGeneration()
     for (const tile of tilesToLoad) {
       loadTile(tile, gen).catch(() => {})
     }
+
+    updateVisibleElementCount(tiles)
   }
 
   /** Force reload all tiles (e.g. when filters change) */
   function reloadAllTiles() {
-    // Evict stale data from topology store before clearing loaded set
-    for (const tileKey of loadedTiles) {
-      topologyStore.evictTile(tileKey)
+    // Evict stale data from topology store before clearing cache
+    for (const key of [...tileCache.keys()]) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+      tileCache.delete(key)
     }
-    loadedTiles.clear()
+    tileLoadStates.clear()
     loadVisibleTiles()
   }
 
@@ -135,5 +288,73 @@ export function useTileLoader() {
     { deep: true },
   )
 
-  return { loadVisibleTiles, loadedTiles }
+  // Memory pressure: aggressive eviction under pressure
+  watch(
+    () => performanceStore.memoryPressure,
+    (pressure) => {
+      if (pressure === 'critical') {
+        // Keep only tiles in the current viewport
+        const currentKeys = new Set(
+          viewportStore.visibleTiles.map((t) => `${t.z}/${t.x}/${t.y}`),
+        )
+        for (const key of [...tileCache.keys()]) {
+          if (!currentKeys.has(key)) {
+            topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+            tileCache.delete(key)
+            tileLoadStates.delete(key)
+          }
+        }
+        updateVisibleElementCount()
+      }
+    },
+  )
+
+  // Poll heap usage (Chrome-only, best-effort)
+  let heapInterval: ReturnType<typeof setInterval> | null = null
+  if (typeof performance !== 'undefined' && 'memory' in performance) {
+    heapInterval = setInterval(() => {
+      const mem = (performance as any).memory
+      if (mem?.usedJSHeapSize) {
+        const mb = mem.usedJSHeapSize / (1024 * 1024)
+        performanceStore.updateHeapMb(mb)
+        telemetry.emit('heap_mb', mb)
+      }
+    }, 5000)
+  }
+
+  // Retry scheduler: periodically check for visible tiles with pending retries
+  const retryTickInterval = setInterval(() => {
+    if (!viewportStore.bounds) return
+    const now = Date.now()
+    const tiles = viewportStore.visibleTiles
+    const pendingRetries = tiles.filter((t) => {
+      const key = tileKeyFromCoord(t)
+      const state = tileLoadStates.get(key)
+      if (!state) return false
+      const needsElem = !state.elementsLoaded
+        && now >= state.nextElementRetryAt
+        && state.nextElementRetryAt > 0
+      const needsLinks = !state.linksLoaded
+        && now >= state.nextLinkRetryAt
+        && state.nextLinkRetryAt > 0
+      return needsElem || needsLinks
+    })
+    if (pendingRetries.length > 0) {
+      const gen = tileService.nextGeneration()
+      for (const tile of pendingRetries) {
+        loadTile(tile, gen).catch(() => {})
+      }
+    }
+  }, 2000)
+
+  function dispose() {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    if (heapInterval) clearInterval(heapInterval)
+    clearInterval(retryTickInterval)
+    tileService.cancelAll()
+  }
+
+  onScopeDispose(dispose)
+
+  return { loadVisibleTiles, tileCache, dispose }
 }

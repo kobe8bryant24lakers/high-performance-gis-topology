@@ -5,17 +5,35 @@
     <span>Links: {{ topologyStore.edgeCount }}</span>
     <span v-if="topologyStore.clusterCount > 0">Clusters: {{ topologyStore.clusterCount }}</span>
     <span>Zoom: {{ viewportStore.zoom.toFixed(1) }}</span>
+    <span v-if="performanceStore.degradationLevel !== 'full'" class="degradation-badge" :class="performanceStore.degradationLevel">
+      {{ degradationLabel }}
+    </span>
+    <span v-if="performanceStore.memoryPressure !== 'normal'" class="memory-badge" :class="performanceStore.memoryPressure">
+      {{ performanceStore.memoryPressure === 'critical' ? 'Memory Critical' : 'Memory Warning' }}
+    </span>
   </footer>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { useViewportStore } from '@/stores/viewport'
 import { useViewModeStore } from '@/stores/view-mode'
+import { usePerformanceStore } from '@/stores/performance'
 
 const topologyStore = useTopologyStore()
 const viewportStore = useViewportStore()
 const viewModeStore = useViewModeStore()
+const performanceStore = usePerformanceStore()
+
+const degradationLabel = computed(() => {
+  switch (performanceStore.degradationLevel) {
+    case 'reduced': return 'Reduced Interaction'
+    case 'minimal': return 'Minimal Interaction'
+    case 'clusters-only': return 'Clusters Only'
+    default: return ''
+  }
+})
 </script>
 
 <style scoped>
@@ -38,5 +56,42 @@ const viewModeStore = useViewModeStore()
   border-radius: 3px;
   font-size: 11px;
   color: #89b4fa;
+}
+
+.degradation-badge {
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.degradation-badge.reduced {
+  background: #45475a;
+  color: #f9e2af;
+}
+
+.degradation-badge.minimal {
+  background: #45475a;
+  color: #fab387;
+}
+
+.degradation-badge.clusters-only {
+  background: #45475a;
+  color: #f38ba8;
+}
+
+.memory-badge {
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.memory-badge.warning {
+  background: #45475a;
+  color: #f9e2af;
+}
+
+.memory-badge.critical {
+  background: #f38ba8;
+  color: #1e1e2e;
 }
 </style>

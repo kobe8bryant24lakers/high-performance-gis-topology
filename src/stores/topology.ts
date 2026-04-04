@@ -17,6 +17,8 @@ export const useTopologyStore = defineStore('topology', () => {
   const tileGenerations = ref(new Map<string, number>())
   const clusters = ref(new Map<string, TopologyCluster>())
   const clusterTileRefs = ref(new Map<string, Set<string>>())
+  /** Nodes that were pinned at eviction time and have zero tile refs — deferred for cleanup */
+  const deferredEvictNodeIds = ref(new Set<string>())
 
   const nodeCount = computed(() => graph.value.order)
   const edgeCount = computed(() => graph.value.size)
@@ -127,7 +129,7 @@ export const useTopologyStore = defineStore('topology', () => {
     }
   }
 
-  function evictTile(tileKey: string) {
+  function evictTile(tileKey: string, pinnedNodeIds?: Set<string>) {
     tileGenerations.value.delete(tileKey)
 
     for (const [edgeId, tiles] of edgeTileRefs.value) {
@@ -143,6 +145,11 @@ export const useTopologyStore = defineStore('topology', () => {
     for (const [nodeId, tiles] of nodeTileRefs.value) {
       tiles.delete(tileKey)
       if (tiles.size === 0) {
+        if (pinnedNodeIds?.has(nodeId)) {
+          // Defer eviction — record for cleanup when unpinned
+          deferredEvictNodeIds.value.add(nodeId)
+          continue
+        }
         if (graph.value.hasNode(nodeId)) {
           graph.value.dropNode(nodeId)
         }
@@ -173,6 +180,27 @@ export const useTopologyStore = defineStore('topology', () => {
     return [...clusters.value.values()]
   }
 
+  /**
+   * Remove deferred-evict nodes that are no longer pinned.
+   * Called when the pin set changes (e.g. selection cleared).
+   */
+  function pruneUnpinnedNodes(currentPinnedIds: Set<string>) {
+    for (const nodeId of [...deferredEvictNodeIds.value]) {
+      if (currentPinnedIds.has(nodeId)) continue
+      // Node is no longer pinned and has zero tile refs — evict it
+      deferredEvictNodeIds.value.delete(nodeId)
+      const refs = nodeTileRefs.value.get(nodeId)
+      if (refs && refs.size > 0) {
+        // Re-acquired tile refs since deferral — no longer a candidate
+        continue
+      }
+      if (graph.value.hasNode(nodeId)) {
+        graph.value.dropNode(nodeId)
+      }
+      nodeTileRefs.value.delete(nodeId)
+    }
+  }
+
   function clear() {
     graph.value.clear()
     nodeTileRefs.value.clear()
@@ -180,12 +208,14 @@ export const useTopologyStore = defineStore('topology', () => {
     tileGenerations.value.clear()
     clusters.value.clear()
     clusterTileRefs.value.clear()
+    deferredEvictNodeIds.value.clear()
   }
 
   return {
     graph, nodeTileRefs, edgeTileRefs, tileGenerations,
     clusters, clusterTileRefs,
     nodeCount, edgeCount, clusterCount,
-    mergeTileElements, mergeTileLinks, evictTile, getElement, getCluster, getClusters, clear,
+    deferredEvictNodeIds,
+    mergeTileElements, mergeTileLinks, evictTile, pruneUnpinnedNodes, getElement, getCluster, getClusters, clear,
   }
 })
