@@ -4,6 +4,7 @@ import {
   bboxToTiles,
   computeTileRetryDelayMs,
   computeVisibleElementCount,
+  isAbortError,
 } from '@/composables/use-tile-loader'
 
 describe('bboxToTiles', () => {
@@ -49,5 +50,28 @@ describe('bboxToTiles', () => {
     expect(computeTileRetryDelayMs(2)).toBe(1000)
     expect(computeTileRetryDelayMs(3)).toBe(2000)
     expect(computeTileRetryDelayMs(7)).toBe(30000)
+  })
+})
+
+describe('isAbortError', () => {
+  it('detects DOMException AbortError', () => {
+    const err = new DOMException('Aborted', 'AbortError')
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it('detects non-DOMException with name AbortError', () => {
+    const err = { name: 'AbortError', message: 'request aborted' }
+    expect(isAbortError(err)).toBe(true)
+  })
+
+  it('rejects regular errors', () => {
+    expect(isAbortError(new Error('timeout'))).toBe(false)
+    expect(isAbortError(null)).toBe(false)
+    expect(isAbortError(undefined)).toBe(false)
+  })
+
+  it('rejects DOMException with non-abort name', () => {
+    const err = new DOMException('Not found', 'NotFoundError')
+    expect(isAbortError(err)).toBe(false)
   })
 })

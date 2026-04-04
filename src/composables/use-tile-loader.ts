@@ -56,8 +56,11 @@ function tileKeyFromCoord(tile: TileCoord): string {
   return `${tile.z}/${tile.x}/${tile.y}`
 }
 
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError'
+export function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true
+  // Handle non-DOMException abort shapes (wrapped fetch clients, polyfills)
+  if (err && typeof err === 'object' && 'name' in err && (err as any).name === 'AbortError') return true
+  return false
 }
 
 export function computeTileRetryDelayMs(retryCount: number): number {
@@ -309,9 +312,37 @@ export function useTileLoader() {
     }, 5000)
   }
 
+  // Retry scheduler: periodically check for visible tiles with pending retries
+  const retryTickInterval = setInterval(() => {
+    if (!viewportStore.bounds) return
+    const now = Date.now()
+    const tiles = viewportStore.visibleTiles
+    const pendingRetries = tiles.filter((t) => {
+      const key = tileKeyFromCoord(t)
+      const state = tileLoadStates.get(key)
+      if (!state) return false
+      const needsElem = !state.elementsLoaded
+        && state.elementRetryCount < TILE_ENDPOINT_MAX_RETRIES
+        && now >= state.nextElementRetryAt
+        && state.nextElementRetryAt > 0
+      const needsLinks = !state.linksLoaded
+        && state.linkRetryCount < TILE_ENDPOINT_MAX_RETRIES
+        && now >= state.nextLinkRetryAt
+        && state.nextLinkRetryAt > 0
+      return needsElem || needsLinks
+    })
+    if (pendingRetries.length > 0) {
+      const gen = tileService.nextGeneration()
+      for (const tile of pendingRetries) {
+        loadTile(tile, gen).catch(() => {})
+      }
+    }
+  }, 2000)
+
   function dispose() {
     if (debounceTimer) clearTimeout(debounceTimer)
     if (heapInterval) clearInterval(heapInterval)
+    clearInterval(retryTickInterval)
     tileService.cancelAll()
   }
 
