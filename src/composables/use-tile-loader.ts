@@ -151,7 +151,9 @@ export function useTileLoader() {
       if (state.elementRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
         // Switch to slow probe interval instead of giving up permanently
         state.nextElementRetryAt = now + TILE_PROBE_INTERVAL_MS
-        telemetry.emit('tile_endpoint_max_retries', 1)
+        if (state.elementRetryCount === TILE_ENDPOINT_MAX_RETRIES) {
+          telemetry.emit('tile_endpoint_max_retries', 1)
+        }
         return
       }
       state.nextElementRetryAt = now + computeTileRetryDelayMs(state.elementRetryCount)
@@ -161,7 +163,9 @@ export function useTileLoader() {
     state.linkRetryCount += 1
     if (state.linkRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
       state.nextLinkRetryAt = now + TILE_PROBE_INTERVAL_MS
-      telemetry.emit('tile_endpoint_max_retries', 1)
+      if (state.linkRetryCount === TILE_ENDPOINT_MAX_RETRIES) {
+        telemetry.emit('tile_endpoint_max_retries', 1)
+      }
       return
     }
     state.nextLinkRetryAt = now + computeTileRetryDelayMs(state.linkRetryCount)
