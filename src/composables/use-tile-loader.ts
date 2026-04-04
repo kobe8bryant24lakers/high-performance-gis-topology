@@ -51,6 +51,7 @@ export interface TileLoadState {
 const TILE_ENDPOINT_MAX_RETRIES = 5
 const TILE_RETRY_BASE_DELAY_MS = 500
 const TILE_RETRY_MAX_DELAY_MS = 30_000
+const TILE_PROBE_INTERVAL_MS = 60_000
 
 function tileKeyFromCoord(tile: TileCoord): string {
   return `${tile.z}/${tile.x}/${tile.y}`
@@ -133,10 +134,8 @@ export function useTileLoader() {
     if (!state) return !tileCache.has(tileKey)
 
     const shouldFetchElements = !state.elementsLoaded
-      && state.elementRetryCount < TILE_ENDPOINT_MAX_RETRIES
       && now >= state.nextElementRetryAt
     const shouldFetchLinks = !state.linksLoaded
-      && state.linkRetryCount < TILE_ENDPOINT_MAX_RETRIES
       && now >= state.nextLinkRetryAt
 
     return shouldFetchElements || shouldFetchLinks
@@ -149,13 +148,22 @@ export function useTileLoader() {
   ) {
     if (endpoint === 'elements') {
       state.elementRetryCount += 1
-      if (state.elementRetryCount >= TILE_ENDPOINT_MAX_RETRIES) return
+      if (state.elementRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
+        // Switch to slow probe interval instead of giving up permanently
+        state.nextElementRetryAt = now + TILE_PROBE_INTERVAL_MS
+        telemetry.emit('tile_endpoint_max_retries', 1)
+        return
+      }
       state.nextElementRetryAt = now + computeTileRetryDelayMs(state.elementRetryCount)
       return
     }
 
     state.linkRetryCount += 1
-    if (state.linkRetryCount >= TILE_ENDPOINT_MAX_RETRIES) return
+    if (state.linkRetryCount >= TILE_ENDPOINT_MAX_RETRIES) {
+      state.nextLinkRetryAt = now + TILE_PROBE_INTERVAL_MS
+      telemetry.emit('tile_endpoint_max_retries', 1)
+      return
+    }
     state.nextLinkRetryAt = now + computeTileRetryDelayMs(state.linkRetryCount)
   }
 
@@ -169,10 +177,8 @@ export function useTileLoader() {
     const state = getOrCreateTileState(tileKey)
     const now = Date.now()
     const fetchElements = !state.elementsLoaded
-      && state.elementRetryCount < TILE_ENDPOINT_MAX_RETRIES
       && now >= state.nextElementRetryAt
     const fetchLinks = !state.linksLoaded
-      && state.linkRetryCount < TILE_ENDPOINT_MAX_RETRIES
       && now >= state.nextLinkRetryAt
     if (!fetchElements && !fetchLinks) return
 
@@ -322,11 +328,9 @@ export function useTileLoader() {
       const state = tileLoadStates.get(key)
       if (!state) return false
       const needsElem = !state.elementsLoaded
-        && state.elementRetryCount < TILE_ENDPOINT_MAX_RETRIES
         && now >= state.nextElementRetryAt
         && state.nextElementRetryAt > 0
       const needsLinks = !state.linksLoaded
-        && state.linkRetryCount < TILE_ENDPOINT_MAX_RETRIES
         && now >= state.nextLinkRetryAt
         && state.nextLinkRetryAt > 0
       return needsElem || needsLinks

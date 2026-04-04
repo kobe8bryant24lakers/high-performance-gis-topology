@@ -42,14 +42,28 @@ export const useSelectionStore = defineStore('selection', () => {
 
   const hasSelection = computed(() => selectedIds.value.size > 0)
 
+  // Track which IDs this store has pinned, so we only unpin our own
+  let selectionOwnedPins = new Set<string>()
+
   // Sync selection to performance store pinned nodes and prune deferred evictions
   watch(selectedIds, (ids) => {
     const performanceStore = usePerformanceStore()
     const topologyStore = useTopologyStore()
-    performanceStore.clearPins()
-    if (ids.size > 0) {
-      performanceStore.pinNodes([...ids])
+
+    // Unpin only IDs that selection previously owned
+    const toUnpin = [...selectionOwnedPins].filter((id) => !ids.has(id))
+    if (toUnpin.length > 0) {
+      performanceStore.unpinNodes(toUnpin)
     }
+
+    // Pin newly selected IDs
+    const toPin = [...ids].filter((id) => !selectionOwnedPins.has(id))
+    if (toPin.length > 0) {
+      performanceStore.pinNodes(toPin)
+    }
+
+    selectionOwnedPins = new Set(ids)
+
     // Prune zero-ref nodes that were deferred while previously pinned
     topologyStore.pruneUnpinnedNodes(performanceStore.pinnedNodeIds)
   })
