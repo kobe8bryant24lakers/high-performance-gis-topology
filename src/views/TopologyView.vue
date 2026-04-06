@@ -36,6 +36,7 @@ import { useViewModeStore } from '@/stores/view-mode'
 import { useSelectionStore } from '@/stores/selection'
 import { useExplorationStore } from '@/stores/exploration'
 import { useKeyboardShortcuts } from '@/composables/use-keyboard-shortcuts'
+import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement } from '@/types/topology'
 
 const viewModeStore = useViewModeStore()
@@ -93,6 +94,7 @@ function onElementHover(id: string | null) {
 }
 
 function onFlyTo(element: NetworkElement) {
+  telemetry.emit('fly_to', 1)
   if (viewModeStore.isSchematic) {
     viewModeStore.setMode('geo')
   }

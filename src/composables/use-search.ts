@@ -2,6 +2,7 @@ import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { apiGet } from '@/api/client'
 import { useFilterStore } from '@/stores/filter'
+import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement, SearchResponse } from '@/types/topology'
 
 export async function performSearch(
@@ -39,10 +40,12 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     isSearching.value = true
+    const start = performance.now()
     try {
       const response = await performSearch(query, 20, abortController.signal)
       results.value = response.results
       total.value = response.total
+      telemetry.emit('search_ms', performance.now() - start)
     } catch {
       // Aborted or failed — ignore
     } finally {

@@ -5,6 +5,7 @@ import { useSelectionStore } from '@/stores/selection'
 import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
+import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
 
@@ -62,6 +63,7 @@ export function useDeckLayers(
   }
 
   const layers = computed(() => {
+    const layerBuildStart = performance.now()
     const allLayers: any[] = []
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
@@ -149,6 +151,7 @@ export function useDeckLayers(
       )
     }
 
+    telemetry.emit('layer_rebuild_ms', performance.now() - layerBuildStart)
     return allLayers
   })
 
