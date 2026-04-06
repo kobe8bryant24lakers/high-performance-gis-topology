@@ -79,3 +79,37 @@ describe('explorationStore', () => {
     expect(store.isExpanding).toBe(true)
   })
 })
+
+describe('explorationStore edge cases', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('navigateTo with out-of-bounds index is a no-op', () => {
+    const store = useExplorationStore()
+    store.pushBreadcrumb({ id: 'n1', label: 'Node 1' })
+    store.navigateTo(5)
+    expect(store.breadcrumbs).toHaveLength(1)
+    store.navigateTo(-1)
+    expect(store.breadcrumbs).toHaveLength(1)
+  })
+
+  it('addExpandedNodes does not exceed cap even with repeated calls', () => {
+    const store = useExplorationStore()
+    for (let batch = 0; batch < 5; batch++) {
+      const ids = Array.from({ length: 500 }, (_, i) => `batch${batch}-n${i}`)
+      store.addExpandedNodes(ids)
+    }
+    expect(store.expandedNodeIds.size).toBe(2000)
+    expect(store.canExpand).toBe(false)
+  })
+
+  it('clearExploration re-enables expansion', () => {
+    const store = useExplorationStore()
+    const ids = Array.from({ length: 2000 }, (_, i) => `n${i}`)
+    store.addExpandedNodes(ids)
+    expect(store.canExpand).toBe(false)
+    store.clearExploration()
+    expect(store.canExpand).toBe(true)
+  })
+})
