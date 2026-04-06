@@ -16,6 +16,11 @@
       />
     </div>
     <StatusBar />
+    <KeyboardHelpOverlay
+      :visible="showHelp"
+      :shortcuts="registry"
+      @close="showHelp = false"
+    />
   </div>
 </template>
 
@@ -26,11 +31,58 @@ import MapView from '@/components/MapView.vue'
 import SchematicView from '@/components/SchematicView.vue'
 import SidePanel from '@/components/SidePanel.vue'
 import StatusBar from '@/components/StatusBar.vue'
+import KeyboardHelpOverlay from '@/components/KeyboardHelpOverlay.vue'
 import { useViewModeStore } from '@/stores/view-mode'
+import { useSelectionStore } from '@/stores/selection'
+import { useExplorationStore } from '@/stores/exploration'
+import { useKeyboardShortcuts } from '@/composables/use-keyboard-shortcuts'
 import type { NetworkElement } from '@/types/topology'
 
 const viewModeStore = useViewModeStore()
+const selectionStore = useSelectionStore()
+const explorationStore = useExplorationStore()
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
+
+const { showHelp, registry } = useKeyboardShortcuts([
+  {
+    key: 'Escape',
+    label: 'Clear selection',
+    handler: () => {
+      selectionStore.clearSelection()
+      showHelp.value = false
+    },
+  },
+  {
+    key: '/',
+    label: 'Focus search',
+    handler: () => {
+      const input = document.querySelector<HTMLInputElement>('.search-input input')
+      input?.focus()
+    },
+  },
+  {
+    key: 'Tab',
+    label: 'Toggle geo/schematic view',
+    handler: () => viewModeStore.toggle(),
+  },
+  {
+    key: '?',
+    shift: true,
+    label: 'Show keyboard shortcuts',
+    handler: () => { showHelp.value = !showHelp.value },
+  },
+  {
+    key: 'Backspace',
+    label: 'Navigate back in breadcrumb trail',
+    handler: () => {
+      if (explorationStore.breadcrumbs.length > 1) {
+        explorationStore.navigateTo(explorationStore.breadcrumbs.length - 2)
+        const prev = explorationStore.breadcrumbs[explorationStore.breadcrumbs.length - 1]
+        if (prev) selectionStore.selectElement(prev.id)
+      }
+    },
+  },
+])
 
 function onElementClick(id: string) {
   // Selection is handled inside views via the selection store
@@ -41,11 +93,9 @@ function onElementHover(id: string | null) {
 }
 
 function onFlyTo(element: NetworkElement) {
-  // Switch to map view if in schematic, then fly to the element
   if (viewModeStore.isSchematic) {
     viewModeStore.setMode('geo')
   }
-  // Use nextTick-style delay to ensure map is visible before flying
   setTimeout(() => {
     mapViewRef.value?.flyTo(element.lng, element.lat)
   }, 50)
