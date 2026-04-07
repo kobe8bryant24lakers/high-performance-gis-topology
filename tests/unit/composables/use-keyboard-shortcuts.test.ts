@@ -3,6 +3,7 @@ import {
   type ShortcutDefinition,
   matchesShortcut,
   buildShortcutRegistry,
+  shouldSuppressNavKey,
 } from '@/composables/use-keyboard-shortcuts'
 
 describe('matchesShortcut', () => {
@@ -48,5 +49,30 @@ describe('buildShortcutRegistry', () => {
     const registry = buildShortcutRegistry(defs)
     expect(registry).toHaveLength(2)
     expect(registry[0].label).toBe('Clear selection')
+  })
+})
+
+describe('shouldSuppressNavKey', () => {
+  it('suppresses Tab on interactive elements', () => {
+    expect(shouldSuppressNavKey('Tab', 'BUTTON')).toBe(true)
+    expect(shouldSuppressNavKey('Tab', 'A')).toBe(true)
+    expect(shouldSuppressNavKey('Tab', 'SELECT')).toBe(true)
+  })
+
+  it('suppresses Backspace on interactive elements', () => {
+    expect(shouldSuppressNavKey('Backspace', 'BUTTON')).toBe(true)
+    expect(shouldSuppressNavKey('Backspace', 'A')).toBe(true)
+  })
+
+  it('does not suppress Tab/Backspace on non-interactive elements', () => {
+    expect(shouldSuppressNavKey('Tab', 'DIV')).toBe(false)
+    expect(shouldSuppressNavKey('Backspace', 'CANVAS')).toBe(false)
+    expect(shouldSuppressNavKey('Tab', 'BODY')).toBe(false)
+  })
+
+  it('does not suppress non-navigation keys on any element', () => {
+    expect(shouldSuppressNavKey('Escape', 'BUTTON')).toBe(false)
+    expect(shouldSuppressNavKey('/', 'A')).toBe(false)
+    expect(shouldSuppressNavKey('?', 'SELECT')).toBe(false)
   })
 })

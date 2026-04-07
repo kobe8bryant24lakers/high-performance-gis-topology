@@ -69,7 +69,7 @@ export class TileService {
     depth: number = 1,
     signal?: AbortSignal,
   ): Promise<NeighborsResponse> {
-    const key = `neighbors/${elementId}`
+    const key = `neighbors/${elementId}/${depth}`
     this.controllers.get(key)?.abort()
 
     const controller = new AbortController()
