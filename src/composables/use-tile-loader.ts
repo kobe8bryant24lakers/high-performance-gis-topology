@@ -173,7 +173,9 @@ export function useTileLoader() {
 
   function updateVisibleElementCount(tiles: TileCoord[] = viewportStore.visibleTiles) {
     const visibleKeys = tiles.map(tileKeyFromCoord)
-    performanceStore.visibleElementCount = computeVisibleElementCount(visibleKeys, tileLoadStates)
+    const count = computeVisibleElementCount(visibleKeys, tileLoadStates)
+    performanceStore.visibleElementCount = count
+    telemetry.emit('visible_element_count', count)
   }
 
   async function loadTile(tile: TileCoord, gen: number) {

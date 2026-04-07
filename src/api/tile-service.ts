@@ -1,5 +1,5 @@
 import { apiGet } from './client'
-import type { TileElementsResponse, TileLinksResponse } from '@/types/topology'
+import type { TileElementsResponse, TileLinksResponse, NeighborsResponse } from '@/types/topology'
 
 export class TileService {
   private generation = 0
@@ -59,6 +59,31 @@ export class TileService {
       )
       if (requestGeneration < this.generation) return null
       return result
+    } finally {
+      this.controllers.delete(key)
+    }
+  }
+
+  async fetchNeighbors(
+    elementId: string,
+    depth: number = 1,
+    signal?: AbortSignal,
+  ): Promise<NeighborsResponse> {
+    const key = `neighbors/${elementId}/${depth}`
+    this.controllers.get(key)?.abort()
+
+    const controller = new AbortController()
+    this.controllers.set(key, controller)
+
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, controller.signal])
+      : controller.signal
+
+    try {
+      return await apiGet<NeighborsResponse>(
+        `/api/topology/elements/${encodeURIComponent(elementId)}/neighbors?depth=${depth}`,
+        { signal: combinedSignal, maxRetries: 2, baseDelayMs: 500 },
+      )
     } finally {
       this.controllers.delete(key)
     }

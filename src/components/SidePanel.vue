@@ -1,5 +1,6 @@
 <template>
   <aside class="side-panel" :class="{ open: isOpen }">
+    <BreadcrumbTrail @navigate="onBreadcrumbNavigate" />
     <div v-if="isOpen" class="panel-tabs">
       <button
         v-if="selectionStore.hasSelection"
@@ -47,6 +48,19 @@
             </template>
           </dl>
         </div>
+        <div class="exploration-actions">
+          <button
+            class="expand-btn"
+            :disabled="!explorationStore.canExpand || explorationStore.isExpanding"
+            @click="onExpandNeighbors"
+          >
+            {{ explorationStore.isExpanding ? 'Expanding...' : 'Expand Neighbors' }}
+          </button>
+          <span v-if="expandError" class="expand-error">{{ expandError }}</span>
+          <span v-else-if="!explorationStore.canExpand" class="limit-warning">
+            Neighbor limit reached — zoom in or clear exploration
+          </span>
+        </div>
       </div>
       <div v-else-if="selectionStore.hasSelection" class="panel-content">
         <p>Element not found in working set.</p>
@@ -78,6 +92,9 @@ import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useSearch } from '@/composables/use-search'
 import FilterPanel from '@/components/FilterPanel.vue'
+import BreadcrumbTrail from '@/components/BreadcrumbTrail.vue'
+import { useExplorationStore } from '@/stores/exploration'
+import { expandNeighbors } from '@/composables/use-exploration'
 import type { NetworkElement } from '@/types/topology'
 
 defineEmits<{
@@ -86,10 +103,12 @@ defineEmits<{
 
 const topologyStore = useTopologyStore()
 const selectionStore = useSelectionStore()
+const explorationStore = useExplorationStore()
 const searchStore = useSearch()
 const { results: searchResults } = storeToRefs(searchStore)
 
 const activeTab = ref<'detail' | 'search' | 'filter'>('detail')
+const expandError = ref<string | null>(null)
 
 const element = computed(() => {
   if (!selectionStore.primarySelectedId) return null
@@ -107,6 +126,20 @@ watch(() => selectionStore.hasSelection, (has) => {
 watch(searchResults, (results) => {
   if (results.length > 0) activeTab.value = 'search'
 })
+
+async function onExpandNeighbors() {
+  if (!element.value) return
+  expandError.value = null
+  try {
+    await expandNeighbors(element.value.id, element.value.label)
+  } catch {
+    expandError.value = 'Failed to expand neighbors. Please try again.'
+  }
+}
+
+function onBreadcrumbNavigate(id: string) {
+  selectionStore.selectElement(id)
+}
 </script>
 
 <style scoped>
@@ -227,6 +260,42 @@ watch(searchResults, (results) => {
 
 .result-type {
   color: #89b4fa;
+  font-size: 11px;
+}
+
+.exploration-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expand-btn {
+  padding: 6px 12px;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  color: #cdd6f4;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.expand-btn:hover:not(:disabled) {
+  background: #45475a;
+}
+
+.expand-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.limit-warning {
+  color: #f9e2af;
+  font-size: 11px;
+}
+
+.expand-error {
+  color: #f38ba8;
   font-size: 11px;
 }
 </style>

@@ -82,6 +82,47 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
+  http.get('/api/topology/elements/:id/neighbors', ({ params, request }) => {
+    const id = params.id as string
+    const element = ALL_ELEMENTS.find((e) => e.id === id)
+    if (!element) return new HttpResponse(null, { status: 404 })
+
+    const url = new URL(request.url)
+    const depth = Math.min(Number(url.searchParams.get('depth') ?? '1'), 3)
+
+    // BFS to collect neighbors up to depth
+    const visited = new Set<string>([id])
+    const resultElements: typeof ALL_ELEMENTS = []
+    const resultLinks: typeof ALL_LINKS = []
+    let frontier = [id]
+
+    for (let d = 0; d < depth && frontier.length > 0; d++) {
+      const nextFrontier: string[] = []
+      for (const nodeId of frontier) {
+        const connectedLinks = ALL_LINKS.filter(
+          (l) => l.sourceId === nodeId || l.targetId === nodeId,
+        )
+        for (const link of connectedLinks) {
+          if (!resultLinks.some((rl) => rl.id === link.id)) {
+            resultLinks.push(link)
+          }
+          const neighborId = link.sourceId === nodeId ? link.targetId : link.sourceId
+          if (!visited.has(neighborId)) {
+            visited.add(neighborId)
+            const neighbor = ALL_ELEMENTS.find((e) => e.id === neighborId)
+            if (neighbor) {
+              resultElements.push(neighbor)
+              nextFrontier.push(neighborId)
+            }
+          }
+        }
+      }
+      frontier = nextFrontier
+    }
+
+    return HttpResponse.json({ elements: resultElements, links: resultLinks })
+  }),
+
   http.get('/api/topology/elements/:id', ({ params }) => {
     const element = ALL_ELEMENTS.find((e) => e.id === params.id)
     if (!element) return new HttpResponse(null, { status: 404 })
