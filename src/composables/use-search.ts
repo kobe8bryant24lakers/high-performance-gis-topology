@@ -27,12 +27,15 @@ export const useSearchStore = defineStore('search', () => {
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let abortController: AbortController | null = null
+  let activeSearchToken = 0
 
   async function search(query: string) {
+    const searchToken = ++activeSearchToken
     abortController?.abort()
     abortController = new AbortController()
 
     if (!query.trim()) {
+      if (searchToken !== activeSearchToken) return
       results.value = []
       total.value = 0
       isSearching.value = false
@@ -43,12 +46,14 @@ export const useSearchStore = defineStore('search', () => {
     const start = performance.now()
     try {
       const response = await performSearch(query, 20, abortController.signal)
+      if (searchToken !== activeSearchToken) return
       results.value = response.results
       total.value = response.total
       telemetry.emit('search_ms', performance.now() - start)
     } catch {
       // Aborted or failed — ignore
     } finally {
+      if (searchToken !== activeSearchToken) return
       isSearching.value = false
     }
   }
