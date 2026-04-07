@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useExplorationStore } from '@/stores/exploration'
+import { usePerformanceStore } from '@/stores/performance'
 
 describe('explorationStore', () => {
   beforeEach(() => {
@@ -111,5 +112,41 @@ describe('explorationStore edge cases', () => {
     expect(store.canExpand).toBe(false)
     store.clearExploration()
     expect(store.canExpand).toBe(true)
+  })
+
+  it('clearExploration unpins exploration nodes from performance store', () => {
+    const store = useExplorationStore()
+    const performanceStore = usePerformanceStore()
+
+    // Simulate exploration: track expanded nodes and pin them
+    const ids = ['n1', 'n2', 'n3']
+    store.addExpandedNodes(ids)
+    performanceStore.pinNodes(ids)
+    expect(performanceStore.pinnedNodeIds.size).toBe(3)
+
+    // Clear exploration should unpin those nodes
+    store.clearExploration()
+    expect(performanceStore.pinnedNodeIds.size).toBe(0)
+    expect(store.expandedNodeIds.size).toBe(0)
+  })
+
+  it('clearExploration preserves non-exploration pins', () => {
+    const store = useExplorationStore()
+    const performanceStore = usePerformanceStore()
+
+    // Pin some nodes outside of exploration
+    performanceStore.pinNodes(['manual-1', 'manual-2'])
+
+    // Simulate exploration pins
+    const explorationIds = ['exp-1', 'exp-2']
+    store.addExpandedNodes(explorationIds)
+    performanceStore.pinNodes(explorationIds)
+    expect(performanceStore.pinnedNodeIds.size).toBe(4)
+
+    // Clear exploration should only unpin exploration nodes
+    store.clearExploration()
+    expect(performanceStore.pinnedNodeIds.size).toBe(2)
+    expect(performanceStore.pinnedNodeIds.has('manual-1')).toBe(true)
+    expect(performanceStore.pinnedNodeIds.has('manual-2')).toBe(true)
   })
 })

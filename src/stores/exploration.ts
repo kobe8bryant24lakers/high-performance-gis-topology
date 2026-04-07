@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { usePerformanceStore } from '@/stores/performance'
 
 const MAX_BREADCRUMBS = 50
 const MAX_EXPANDED_NODES = 2_000
@@ -45,6 +46,11 @@ export const useExplorationStore = defineStore('exploration', () => {
   }
 
   function clearExploration() {
+    // Unpin exploration-pinned nodes before clearing tracking
+    if (expandedNodeIds.value.size > 0) {
+      const performanceStore = usePerformanceStore()
+      performanceStore.unpinNodes([...expandedNodeIds.value])
+    }
     breadcrumbs.value = []
     expandedNodeIds.value = new Set()
     isExpanding.value = false

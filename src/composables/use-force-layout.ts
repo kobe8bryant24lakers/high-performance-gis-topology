@@ -2,6 +2,7 @@ import { ref, watch, type Ref } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { useViewModeStore } from '@/stores/view-mode'
 import { computeLayout, type LayoutInput, type LayoutPosition } from '@/workers/layout-worker'
+import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement } from '@/types/topology'
 
 export function extractLayoutInput(topologyStore: ReturnType<typeof useTopologyStore>): LayoutInput {
@@ -54,6 +55,7 @@ export function useForceLayout() {
     }
 
     isComputing.value = true
+    const layoutStart = performance.now()
 
     if (typeof Worker !== 'undefined' && !import.meta.env.TEST) {
       worker?.terminate()
@@ -62,12 +64,14 @@ export function useForceLayout() {
         const result = e.data
         positions.value = new Map(result.positions.map((p: LayoutPosition) => [p.id, p]))
         isComputing.value = false
+        telemetry.emit('worker_layout_ms', performance.now() - layoutStart)
       }
       worker.postMessage(input)
     } else {
       const result = computeLayout(input)
       positions.value = new Map(result.positions.map((p) => [p.id, p]))
       isComputing.value = false
+      telemetry.emit('worker_layout_ms', performance.now() - layoutStart)
     }
   }
 

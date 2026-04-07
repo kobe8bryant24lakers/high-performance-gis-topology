@@ -56,7 +56,8 @@
           >
             {{ explorationStore.isExpanding ? 'Expanding...' : 'Expand Neighbors' }}
           </button>
-          <span v-if="!explorationStore.canExpand" class="limit-warning">
+          <span v-if="expandError" class="expand-error">{{ expandError }}</span>
+          <span v-else-if="!explorationStore.canExpand" class="limit-warning">
             Neighbor limit reached — zoom in or clear exploration
           </span>
         </div>
@@ -107,6 +108,7 @@ const searchStore = useSearch()
 const { results: searchResults } = storeToRefs(searchStore)
 
 const activeTab = ref<'detail' | 'search' | 'filter'>('detail')
+const expandError = ref<string | null>(null)
 
 const element = computed(() => {
   if (!selectionStore.primarySelectedId) return null
@@ -125,9 +127,14 @@ watch(searchResults, (results) => {
   if (results.length > 0) activeTab.value = 'search'
 })
 
-function onExpandNeighbors() {
+async function onExpandNeighbors() {
   if (!element.value) return
-  expandNeighbors(element.value.id, element.value.label)
+  expandError.value = null
+  try {
+    await expandNeighbors(element.value.id, element.value.label)
+  } catch {
+    expandError.value = 'Failed to expand neighbors. Please try again.'
+  }
 }
 
 function onBreadcrumbNavigate(id: string) {
@@ -284,6 +291,11 @@ function onBreadcrumbNavigate(id: string) {
 
 .limit-warning {
   color: #f9e2af;
+  font-size: 11px;
+}
+
+.expand-error {
+  color: #f38ba8;
   font-size: 11px;
 }
 </style>
