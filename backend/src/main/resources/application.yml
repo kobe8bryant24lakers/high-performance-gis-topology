@@ -21,6 +21,13 @@ mybatis-plus:
 server:
   port: 8080
 
+# Admin seed endpoint — only active under the "local" Spring profile.
+# Override admin.seed.token via environment variable or application-local.yml.
+# Never use the default value in any shared environment.
+admin:
+  seed:
+    token: ${ADMIN_SEED_TOKEN:dev-only-change-me}
+
 logging:
   level:
     com.topology.gis: INFO
