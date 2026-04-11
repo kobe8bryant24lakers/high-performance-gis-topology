@@ -11,6 +11,8 @@ import com.topology.gis.shared.mapper.NetworkElementMapper;
 import com.topology.gis.shared.mapper.TopologyLinkMapper;
 import com.topology.gis.tile.dto.TileElementsResponse;
 import com.topology.gis.tile.dto.TileLinksResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -19,8 +21,12 @@ import java.util.stream.Collectors;
 @Service
 public class TileService {
 
-    private static final int CLUSTER_ZOOM_THRESHOLD = 12;
+    private static final Logger log = LoggerFactory.getLogger(TileService.class);
+
+    public static final int CLUSTER_ZOOM_THRESHOLD = 12;
     private static final long CURRENT_GENERATION = 1L;
+    /** Hard cap on elements returned per tile request to prevent full-scan materialization. */
+    private static final int TILE_ELEMENT_CAP = 10_000;
 
     private final NetworkElementMapper elementMapper;
     private final TopologyLinkMapper linkMapper;
@@ -85,6 +91,12 @@ public class TileService {
         List<NetworkElement> entities = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
                 typesParam, propFilter);
+
+        if (entities.size() > TILE_ELEMENT_CAP) {
+            log.warn("Tile {}/{}/{} returned {} elements, truncating to cap {}",
+                    z, x, y, entities.size(), TILE_ELEMENT_CAP);
+            entities = entities.subList(0, TILE_ELEMENT_CAP);
+        }
 
         if (z < CLUSTER_ZOOM_THRESHOLD && !entities.isEmpty()) {
             List<TopologyClusterDto> clusters = clusteringService.cluster(entities, z, x, y, bbox);

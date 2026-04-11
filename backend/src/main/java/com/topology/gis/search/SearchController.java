@@ -2,6 +2,7 @@ package com.topology.gis.search;
 
 import com.topology.gis.search.dto.SearchResponse;
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +23,7 @@ public class SearchController {
     @GetMapping("/search")
     public SearchResponse search(
             @RequestParam(value = "q", defaultValue = "") String query,
-            @RequestParam(defaultValue = "20") @Max(200) int limit,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int limit,
             @RequestParam(value = "types", required = false, defaultValue = "") String typesParam) {
 
         List<String> types = (typesParam == null || typesParam.isBlank())
