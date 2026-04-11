@@ -23,7 +23,9 @@ This document describes the backend service for the High-Performance GIS Topolog
 
 ---
 
-## Repository Structure
+## Package Structure (DDD)
+
+Packages are organized by **bounded context** rather than technical layer. Each domain package owns its controller, service, and response DTOs together. Cross-cutting infrastructure (entities, mappers, config, type handlers) lives in `shared/`.
 
 ```
 backend/
@@ -34,38 +36,44 @@ backend/
     ├── main/
     │   ├── java/com/topology/gis/
     │   │   ├── GisTopologyApplication.java
-    │   │   ├── config/
-    │   │   │   ├── WebConfig.java          ← CORS (localhost:5173, :4173)
-    │   │   │   ├── JacksonConfig.java      ← JavaTimeModule, no timestamp serialization
-    │   │   │   └── MybatisPlusConfig.java  ← Pagination plugin
-    │   │   ├── entity/
-    │   │   │   ├── NetworkElement.java
-    │   │   │   └── TopologyLink.java
-    │   │   ├── mapper/
-    │   │   │   ├── NetworkElementMapper.java
-    │   │   │   └── TopologyLinkMapper.java
-    │   │   ├── typehandler/
-    │   │   │   └── JsonbTypeHandler.java   ← TypeHandler<Map<String,Object>> for JSONB
-    │   │   ├── service/
-    │   │   │   ├── TileService.java        ← Web Mercator math, filter assembly
-    │   │   │   ├── TopologyService.java    ← Element detail, BFS neighbors
-    │   │   │   ├── SearchService.java
-    │   │   │   ├── ClusteringService.java  ← Quadrant clustering (mirrors TS mock)
-    │   │   │   └── SeedService.java        ← LCG PRNG, matches TS mock seed=42
-    │   │   ├── controller/
+    │   │   ├── shared/                         ← cross-cutting infrastructure
+    │   │   │   ├── config/
+    │   │   │   │   ├── WebConfig.java          ← CORS (localhost:5173, :4173)
+    │   │   │   │   ├── JacksonConfig.java      ← JavaTimeModule, no timestamp serialization
+    │   │   │   │   └── MybatisPlusConfig.java  ← Pagination plugin
+    │   │   │   ├── typehandler/
+    │   │   │   │   └── JsonbTypeHandler.java   ← TypeHandler<Map<String,Object>> for JSONB
+    │   │   │   ├── entity/
+    │   │   │   │   ├── NetworkElement.java
+    │   │   │   │   └── TopologyLink.java
+    │   │   │   ├── mapper/
+    │   │   │   │   ├── NetworkElementMapper.java
+    │   │   │   │   └── TopologyLinkMapper.java
+    │   │   │   └── dto/                        ← DTOs shared across domains
+    │   │   │       ├── NetworkElementDto.java
+    │   │   │       ├── TopologyLinkDto.java
+    │   │   │       ├── TopologyClusterDto.java
+    │   │   │       └── EndpointStubDto.java
+    │   │   ├── tile/                           ← tile loading + clustering
     │   │   │   ├── TileController.java
+    │   │   │   ├── TileService.java            ← Web Mercator math, filter assembly
+    │   │   │   ├── ClusteringService.java      ← Quadrant clustering (mirrors TS mock)
+    │   │   │   └── dto/
+    │   │   │       ├── TileElementsResponse.java
+    │   │   │       └── TileLinksResponse.java
+    │   │   ├── element/                        ← element detail + BFS neighbors
     │   │   │   ├── ElementController.java
+    │   │   │   ├── TopologyService.java
+    │   │   │   └── dto/
+    │   │   │       └── NeighborsResponse.java
+    │   │   ├── search/                         ← element search
     │   │   │   ├── SearchController.java
-    │   │   │   └── AdminController.java    ← @Profile("!prod") only
-    │   │   └── dto/                        ← Java records
-    │   │       ├── NetworkElementDto.java
-    │   │       ├── TopologyLinkDto.java
-    │   │       ├── TopologyClusterDto.java
-    │   │       ├── EndpointStubDto.java
-    │   │       ├── TileElementsResponse.java
-    │   │       ├── TileLinksResponse.java
-    │   │       ├── NeighborsResponse.java
-    │   │       └── SearchResponse.java
+    │   │   │   ├── SearchService.java
+    │   │   │   └── dto/
+    │   │   │       └── SearchResponse.java
+    │   │   └── admin/                          ← seeding (@Profile("!prod"))
+    │   │       ├── AdminController.java
+    │   │       └── SeedService.java            ← LCG PRNG, matches TS mock seed=42
     │   └── resources/
     │       ├── application.yml
     │       ├── mapper/
@@ -80,6 +88,16 @@ backend/
             ├── ElementControllerIntegrationTest.java
             └── SearchControllerIntegrationTest.java
 ```
+
+### Domain boundary rationale
+
+| Package | Bounded context | Owns |
+|---|---|---|
+| `shared/` | Infrastructure | Entities, mappers, config, cross-cutting DTOs (referenced by ≥2 domains) |
+| `tile/` | Tile loading | Tile bbox math, clustering, tile response DTOs |
+| `element/` | Element graph | Element detail, BFS neighbor traversal, neighbor response DTO |
+| `search/` | Search | Full-text search over labels/types, search response DTO |
+| `admin/` | Administration | Database seeding (dev/staging only) |
 
 ---
 

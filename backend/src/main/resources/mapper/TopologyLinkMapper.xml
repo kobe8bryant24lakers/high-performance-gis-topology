@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.topology.gis.mapper.TopologyLinkMapper">
+<mapper namespace="com.topology.gis.shared.mapper.TopologyLinkMapper">
 
     <resultMap id="topologyLinkResultMap" type="com.topology.gis.entity.TopologyLink">
         <id     column="id"         property="id"/>
@@ -14,7 +14,7 @@
         <result column="version"    property="version"/>
         <result column="updated_at" property="updatedAt"/>
         <result column="properties" property="properties"
-                typeHandler="com.topology.gis.typehandler.JsonbTypeHandler"/>
+                typeHandler="com.topology.gis.shared.typehandler.JsonbTypeHandler"/>
     </resultMap>
 
     <!-- Links touching any of the given element IDs (PostgreSQL array literal '{id1,id2,...}') -->

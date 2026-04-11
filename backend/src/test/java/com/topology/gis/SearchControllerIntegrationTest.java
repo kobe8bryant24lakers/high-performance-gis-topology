@@ -1,7 +1,7 @@
 package com.topology.gis;
 
-import com.topology.gis.dto.SearchResponse;
-import com.topology.gis.service.SeedService;
+import com.topology.gis.search.dto.SearchResponse;
+import com.topology.gis.admin.SeedService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

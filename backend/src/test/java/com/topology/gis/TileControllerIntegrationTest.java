@@ -1,8 +1,8 @@
 package com.topology.gis;
 
-import com.topology.gis.dto.TileElementsResponse;
-import com.topology.gis.dto.TileLinksResponse;
-import com.topology.gis.service.SeedService;
+import com.topology.gis.tile.dto.TileElementsResponse;
+import com.topology.gis.tile.dto.TileLinksResponse;
+import com.topology.gis.admin.SeedService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

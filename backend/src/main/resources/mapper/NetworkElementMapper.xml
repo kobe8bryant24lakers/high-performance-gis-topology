@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.topology.gis.mapper.NetworkElementMapper">
+<mapper namespace="com.topology.gis.shared.mapper.NetworkElementMapper">
 
     <resultMap id="networkElementResultMap" type="com.topology.gis.entity.NetworkElement">
         <id     column="id"         property="id"/>
@@ -12,7 +12,7 @@
         <result column="version"    property="version"/>
         <result column="updated_at" property="updatedAt"/>
         <result column="properties" property="properties"
-                typeHandler="com.topology.gis.typehandler.JsonbTypeHandler"/>
+                typeHandler="com.topology.gis.shared.typehandler.JsonbTypeHandler"/>
     </resultMap>
 
     <select id="findInTile" resultMap="networkElementResultMap">
