@@ -52,33 +52,33 @@ public class SeedService {
     }
 
     /**
-     * Clears all topology data and reseed with random elements and links.
-     * Elements and links are generated and inserted in bounded chunks; the full
-     * dataset is never held in memory at once. Each chunk is committed in its own
-     * short transaction to avoid long lock windows.
+     * Atomically clears all topology data and reseeds with random elements and links.
+     * The entire operation runs in a single transaction: if any insert fails the delete
+     * is rolled back and the previous dataset is preserved.
+     * Elements and links are generated and inserted in bounded chunks so the full dataset
+     * is never held in memory at once.
      *
      * @throws IllegalStateException if a seed operation is already in progress
      */
+    @Transactional
     public void seed(int elementCount, int linkCount) {
         if (!seeding.compareAndSet(false, true)) {
             throw new IllegalStateException("A seed operation is already in progress");
         }
         try {
             log.info("Seeding topology: {} elements, {} links", elementCount, linkCount);
-            clearData();
+            linkMapper.delete(null);
+            elementMapper.delete(null);
             lcgSeed = 42L;  // Starting seed matches TypeScript resetSeed(42)
             insertElements(elementCount);
             insertLinks(elementCount, linkCount);
             log.info("Seeding complete");
+        } catch (RuntimeException ex) {
+            seeding.set(false);   // release before Spring rolls back so flag is consistent
+            throw ex;
         } finally {
             seeding.set(false);
         }
-    }
-
-    @Transactional
-    protected void clearData() {
-        linkMapper.delete(null);
-        elementMapper.delete(null);
     }
 
     /**
@@ -141,13 +141,11 @@ public class SeedService {
         }
     }
 
-    @Transactional
-    protected void insertElementBatch(List<NetworkElement> batch) {
+    private void insertElementBatch(List<NetworkElement> batch) {
         batch.forEach(elementMapper::insert);
     }
 
-    @Transactional
-    protected void insertLinkBatch(List<TopologyLink> batch) {
+    private void insertLinkBatch(List<TopologyLink> batch) {
         batch.forEach(linkMapper::insert);
     }
 }

@@ -21,6 +21,8 @@
         WHERE ST_Within(location, ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326))
           AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
           AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
+        ORDER BY id
+        LIMIT #{limit}
     </select>
 
     <select id="search" resultMap="networkElementResultMap">

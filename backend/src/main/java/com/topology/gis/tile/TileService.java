@@ -11,9 +11,9 @@ import com.topology.gis.shared.mapper.NetworkElementMapper;
 import com.topology.gis.shared.mapper.TopologyLinkMapper;
 import com.topology.gis.tile.dto.TileElementsResponse;
 import com.topology.gis.tile.dto.TileLinksResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,12 +21,12 @@ import java.util.stream.Collectors;
 @Service
 public class TileService {
 
-    private static final Logger log = LoggerFactory.getLogger(TileService.class);
-
     public static final int CLUSTER_ZOOM_THRESHOLD = 12;
     private static final long CURRENT_GENERATION = 1L;
-    /** Hard cap on elements returned per tile request to prevent full-scan materialization. */
-    private static final int TILE_ELEMENT_CAP = 10_000;
+    /** Hard cap pushed into SQL LIMIT — prevents full-scan materialization at the DB layer. */
+    static final int TILE_ELEMENT_CAP = 10_000;
+    /** Hard cap on links returned per tile request. */
+    static final int TILE_LINK_CAP = 50_000;
 
     private final NetworkElementMapper elementMapper;
     private final TopologyLinkMapper linkMapper;
@@ -57,12 +57,22 @@ public class TileService {
         return new TileBBox(west, south, east, north);
     }
 
+    /** Only allow alphanumeric, dash, and underscore in type tokens to prevent array-literal injection. */
+    private static final java.util.regex.Pattern SAFE_TYPE_TOKEN = java.util.regex.Pattern.compile("^[a-zA-Z0-9_-]+$");
+
     /**
      * Converts a list of types to a PostgreSQL array literal string, e.g. "{router,switch}".
      * Returns null when the list is empty (triggers the IS NULL guard in the query).
+     * Throws 400 if any token contains characters that could break the array literal.
      */
-    private String toTypesParam(List<String> types) {
+    public static String toTypesParam(List<String> types) {
         if (types == null || types.isEmpty()) return null;
+        for (String token : types) {
+            if (token == null || !SAFE_TYPE_TOKEN.matcher(token).matches()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid type filter token: '" + token + "'. Only letters, digits, hyphens and underscores are allowed.");
+            }
+        }
         return "{" + String.join(",", types) + "}";
     }
 
@@ -90,13 +100,7 @@ public class TileService {
 
         List<NetworkElement> entities = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
-                typesParam, propFilter);
-
-        if (entities.size() > TILE_ELEMENT_CAP) {
-            log.warn("Tile {}/{}/{} returned {} elements, truncating to cap {}",
-                    z, x, y, entities.size(), TILE_ELEMENT_CAP);
-            entities = entities.subList(0, TILE_ELEMENT_CAP);
-        }
+                typesParam, propFilter, TILE_ELEMENT_CAP);
 
         if (z < CLUSTER_ZOOM_THRESHOLD && !entities.isEmpty()) {
             List<TopologyClusterDto> clusters = clusteringService.cluster(entities, z, x, y, bbox);
@@ -118,7 +122,7 @@ public class TileService {
 
         List<NetworkElement> tileElements = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
-                typesParam, propFilter);
+                typesParam, propFilter, TILE_ELEMENT_CAP);
 
         if (tileElements.isEmpty()) {
             return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
@@ -130,7 +134,7 @@ public class TileService {
 
         // PostgreSQL array literal: {id1,id2,...}
         String idsParam = "{" + String.join(",", tileElementIds) + "}";
-        List<TopologyLink> links = linkMapper.findLinksForElements(idsParam);
+        List<TopologyLink> links = linkMapper.findLinksForElements(idsParam, TILE_LINK_CAP);
 
         // Collect stub IDs: endpoints outside the tile
         Set<String> stubIds = new LinkedHashSet<>();

@@ -15,7 +15,8 @@ public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
             @Param("east") double east,
             @Param("north") double north,
             @Param("types") String types,
-            @Param("propFilter") String propFilter
+            @Param("propFilter") String propFilter,
+            @Param("limit") int limit
     );
 
     List<NetworkElement> search(

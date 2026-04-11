@@ -25,9 +25,7 @@ public class SearchService {
         }
         // ILIKE wildcard wrapping for prefix/substring match
         String likeQuery = "%" + query.toLowerCase() + "%";
-        String typesParam = (types == null || types.isEmpty())
-                ? null
-                : "{" + String.join(",", types) + "}";
+        String typesParam = TileService.toTypesParam(types);
 
         List<NetworkElementDto> results = elementMapper.search(likeQuery, typesParam, limit)
                 .stream()

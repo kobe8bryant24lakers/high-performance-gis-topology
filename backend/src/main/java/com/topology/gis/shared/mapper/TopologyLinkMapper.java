@@ -8,7 +8,7 @@ import java.util.List;
 public interface TopologyLinkMapper extends BaseMapper<TopologyLink> {
 
     // Defined in TopologyLinkMapper.xml — requires explicit resultMap for JsonbTypeHandler
-    List<TopologyLink> findLinksForElements(@Param("ids") String ids);
+    List<TopologyLink> findLinksForElements(@Param("ids") String ids, @Param("limit") int limit);
 
     // Defined in TopologyLinkMapper.xml — recursive CTE too complex for inline @Select
     List<String> findNeighborIds(@Param("startId") String startId, @Param("maxDepth") int maxDepth);

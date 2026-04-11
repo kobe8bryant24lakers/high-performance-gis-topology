@@ -22,6 +22,8 @@
         SELECT id, type, source_id, target_id, directed, weight, status, version, updated_at, properties
         FROM topology_links
         WHERE source_id = ANY(#{ids}::text[]) OR target_id = ANY(#{ids}::text[])
+        ORDER BY id
+        LIMIT #{limit}
     </select>
 
     <!-- BFS neighbor IDs via recursive CTE — bounded by maxDepth (max 3) -->
@@ -40,7 +42,9 @@
         SELECT DISTINCT node_id FROM bfs WHERE node_id != #{startId}
     </select>
 
-    <!-- All links touching any node reachable from startId within maxDepth hops -->
+    <!-- Links whose BOTH endpoints are within the BFS-reachable set up to maxDepth hops.
+         Using AND (not OR) enforces the depth boundary: an OR would include edges from
+         depth-N nodes to depth-(N+1) nodes that were never traversed. -->
     <select id="findNeighborLinks" resultMap="topologyLinkResultMap">
         WITH RECURSIVE bfs(node_id, depth) AS (
             SELECT #{startId}::varchar, 0
@@ -57,7 +61,7 @@
                         tl.weight, tl.status, tl.version, tl.updated_at, tl.properties
         FROM topology_links tl
         WHERE tl.source_id IN (SELECT node_id FROM bfs)
-           OR tl.target_id IN (SELECT node_id FROM bfs)
+          AND tl.target_id IN (SELECT node_id FROM bfs)
     </select>
 
 </mapper>
