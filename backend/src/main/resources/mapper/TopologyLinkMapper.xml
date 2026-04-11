@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.topology.gis.mapper.TopologyLinkMapper">
+
+    <resultMap id="topologyLinkResultMap" type="com.topology.gis.entity.TopologyLink">
+        <id     column="id"         property="id"/>
+        <result column="type"       property="type"/>
+        <result column="source_id"  property="sourceId"/>
+        <result column="target_id"  property="targetId"/>
+        <result column="directed"   property="directed"/>
+        <result column="weight"     property="weight"/>
+        <result column="status"     property="status"/>
+        <result column="version"    property="version"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="properties" property="properties"
+                typeHandler="com.topology.gis.typehandler.JsonbTypeHandler"/>
+    </resultMap>
+
+    <!-- Links touching any of the given element IDs (PostgreSQL array literal '{id1,id2,...}') -->
+    <select id="findLinksForElements" resultMap="topologyLinkResultMap">
+        SELECT id, type, source_id, target_id, directed, weight, status, version, updated_at, properties
+        FROM topology_links
+        WHERE source_id = ANY(#{ids}::text[]) OR target_id = ANY(#{ids}::text[])
+    </select>
+
+    <!-- BFS neighbor IDs via recursive CTE — bounded by maxDepth (max 3) -->
+    <select id="findNeighborIds" resultType="string">
+        WITH RECURSIVE bfs(node_id, depth) AS (
+            SELECT #{startId}::varchar, 0
+            UNION
+            SELECT
+                CASE WHEN tl.source_id = bfs.node_id THEN tl.target_id
+                     ELSE tl.source_id END,
+                bfs.depth + 1
+            FROM topology_links tl
+            JOIN bfs ON (tl.source_id = bfs.node_id OR tl.target_id = bfs.node_id)
+            WHERE bfs.depth &lt; #{maxDepth}
+        )
+        SELECT DISTINCT node_id FROM bfs WHERE node_id != #{startId}
+    </select>
+
+    <!-- All links touching any node reachable from startId within maxDepth hops -->
+    <select id="findNeighborLinks" resultMap="topologyLinkResultMap">
+        WITH RECURSIVE bfs(node_id, depth) AS (
+            SELECT #{startId}::varchar, 0
+            UNION
+            SELECT
+                CASE WHEN tl.source_id = bfs.node_id THEN tl.target_id
+                     ELSE tl.source_id END,
+                bfs.depth + 1
+            FROM topology_links tl
+            JOIN bfs ON (tl.source_id = bfs.node_id OR tl.target_id = bfs.node_id)
+            WHERE bfs.depth &lt; #{maxDepth}
+        )
+        SELECT DISTINCT tl.id, tl.type, tl.source_id, tl.target_id, tl.directed,
+                        tl.weight, tl.status, tl.version, tl.updated_at, tl.properties
+        FROM topology_links tl
+        WHERE tl.source_id IN (SELECT node_id FROM bfs)
+           OR tl.target_id IN (SELECT node_id FROM bfs)
+    </select>
+
+</mapper>
