@@ -1,0 +1,6 @@
+# Local-profile overrides — loaded only when spring.profiles.active=local.
+# The admin seed endpoint is only active on this profile.
+# Set ADMIN_SEED_TOKEN in your environment before starting; startup will fail if it is absent.
+admin:
+  seed:
+    token: ${ADMIN_SEED_TOKEN}

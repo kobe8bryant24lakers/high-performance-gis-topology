@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.topology.gis.shared.mapper.NetworkElementMapper">
+
+    <resultMap id="networkElementResultMap" type="com.topology.gis.shared.entity.NetworkElement">
+        <id     column="id"         property="id"/>
+        <result column="type"       property="type"/>
+        <result column="label"      property="label"/>
+        <result column="lng"        property="lng"/>
+        <result column="lat"        property="lat"/>
+        <result column="version"    property="version"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="properties" property="properties"
+                typeHandler="com.topology.gis.shared.typehandler.JsonbTypeHandler"/>
+    </resultMap>
+
+    <select id="findInTile" resultMap="networkElementResultMap">
+        SELECT id, type, label, lng, lat, version, updated_at, properties
+        FROM network_elements
+        WHERE ST_Within(location, ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326))
+          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <select id="search" resultMap="networkElementResultMap">
+        SELECT id, type, label, lng, lat, version, updated_at, properties
+        FROM network_elements
+        WHERE (label ILIKE #{query} OR type ILIKE #{query})
+          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+        LIMIT #{limit}
+    </select>
+
+    <select id="countSearch" resultType="long">
+        SELECT COUNT(*)
+        FROM network_elements
+        WHERE (label ILIKE #{query} OR type ILIKE #{query})
+          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+    </select>
+
+</mapper>
