@@ -22,6 +22,7 @@ import java.util.TreeMap;
 public class TileController {
 
     private static final int MAX_TYPES = 16;
+    private static final int MAX_TYPE_TOKEN_LENGTH = 64;
     private static final int MAX_PROP_FILTERS = 16;
     private static final int MAX_PROP_KEY_LENGTH = 64;
     private static final int MAX_PROP_VALUE_LENGTH = 256;
@@ -75,6 +76,12 @@ public class TileController {
                 .map(token -> token.toLowerCase(Locale.ROOT))
                 .distinct()
                 .toList();
+        for (String token : parsed) {
+            if (token.length() > MAX_TYPE_TOKEN_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Type filter token too long. Max length: " + MAX_TYPE_TOKEN_LENGTH);
+            }
+        }
         if (parsed.size() > MAX_TYPES) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Too many type filters. Max allowed: " + MAX_TYPES);

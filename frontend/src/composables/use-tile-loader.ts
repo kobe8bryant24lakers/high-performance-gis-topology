@@ -75,6 +75,8 @@ export function bboxToTiles(bounds: ViewportBounds, zoom: number): TileCoord[] {
 export interface TileLoadState {
   elementsLoaded: boolean
   linksLoaded: boolean
+  elementsInFlight: boolean
+  linksInFlight: boolean
   elementCount: number
   elementRetryCount: number
   linkRetryCount: number
@@ -114,6 +116,15 @@ export function computeVisibleElementCount(
     total += state.elementCount
   }
   return total
+}
+
+export function shouldFetchEndpoint(
+  loaded: boolean,
+  inFlight: boolean,
+  nextRetryAt: number,
+  now: number,
+): boolean {
+  return !loaded && !inFlight && now >= nextRetryAt
 }
 
 function encodeTypeParamToken(token: string): string {
@@ -167,6 +178,8 @@ export function useTileLoader() {
     const created: TileLoadState = {
       elementsLoaded: false,
       linksLoaded: false,
+      elementsInFlight: false,
+      linksInFlight: false,
       elementCount: 0,
       elementRetryCount: 0,
       linkRetryCount: 0,
@@ -181,10 +194,18 @@ export function useTileLoader() {
     const state = tileLoadStates.get(tileKey)
     if (!state) return !tileCache.has(tileKey)
 
-    const shouldFetchElements = !state.elementsLoaded
-      && now >= state.nextElementRetryAt
-    const shouldFetchLinks = !state.linksLoaded
-      && now >= state.nextLinkRetryAt
+    const shouldFetchElements = shouldFetchEndpoint(
+      state.elementsLoaded,
+      state.elementsInFlight,
+      state.nextElementRetryAt,
+      now,
+    )
+    const shouldFetchLinks = shouldFetchEndpoint(
+      state.linksLoaded,
+      state.linksInFlight,
+      state.nextLinkRetryAt,
+      now,
+    )
 
     return shouldFetchElements || shouldFetchLinks
   }
@@ -230,23 +251,41 @@ export function useTileLoader() {
     const tileKey = tileKeyFromCoord(tile)
     const state = getOrCreateTileState(tileKey)
     const now = Date.now()
-    const fetchElements = !state.elementsLoaded
-      && now >= state.nextElementRetryAt
-    const fetchLinks = !state.linksLoaded
-      && now >= state.nextLinkRetryAt
+    const fetchElements = shouldFetchEndpoint(
+      state.elementsLoaded,
+      state.elementsInFlight,
+      state.nextElementRetryAt,
+      now,
+    )
+    const fetchLinks = shouldFetchEndpoint(
+      state.linksLoaded,
+      state.linksInFlight,
+      state.nextLinkRetryAt,
+      now,
+    )
     if (!fetchElements && !fetchLinks) return
 
     const qs = filterQueryString()
     const start = performance.now()
 
-    const [elemResult, linkResult] = await Promise.allSettled([
-      fetchElements
-        ? tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs)
-        : Promise.resolve(null),
-      fetchLinks
-        ? tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs)
-        : Promise.resolve(null),
-    ])
+    state.elementsInFlight = fetchElements
+    state.linksInFlight = fetchLinks
+
+    let elemResult: PromiseSettledResult<Awaited<ReturnType<typeof tileService.fetchTileElements>>>
+    let linkResult: PromiseSettledResult<Awaited<ReturnType<typeof tileService.fetchTileLinks>>>
+    try {
+      ;[elemResult, linkResult] = await Promise.allSettled([
+        fetchElements
+          ? tileService.fetchTileElements(tile.z, tile.x, tile.y, gen, qs)
+          : Promise.resolve(null),
+        fetchLinks
+          ? tileService.fetchTileLinks(tile.z, tile.x, tile.y, gen, qs)
+          : Promise.resolve(null),
+      ])
+    } finally {
+      if (fetchElements) state.elementsInFlight = false
+      if (fetchLinks) state.linksInFlight = false
+    }
 
     telemetry.emit('tile_fetch_ms', performance.now() - start)
 
@@ -297,7 +336,9 @@ export function useTileLoader() {
 
     const now = Date.now()
     const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(tileKeyFromCoord(t), now))
-    const gen = tileService.nextGeneration()
+    const gen = tilesToLoad.length > 0
+      ? tileService.nextGeneration()
+      : tileService.currentGeneration()
     for (const tile of tilesToLoad) {
       loadTile(tile, gen).catch(() => {})
     }
@@ -390,7 +431,8 @@ export function useTileLoader() {
       return needsElem || needsLinks
     })
     if (pendingRetries.length > 0) {
-      const gen = tileService.nextGeneration()
+      // Retries should not invalidate in-flight same-viewport responses.
+      const gen = tileService.currentGeneration()
       for (const tile of pendingRetries) {
         loadTile(tile, gen).catch(() => {})
       }

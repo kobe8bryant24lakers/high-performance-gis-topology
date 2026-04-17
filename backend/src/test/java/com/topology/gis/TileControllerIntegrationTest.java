@@ -7,6 +7,7 @@ import com.topology.gis.shared.mapper.NetworkElementMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.util.Set;
@@ -96,5 +97,14 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
                 .collect(Collectors.toSet());
 
         assertThat(stubTypes).isSubsetOf("firewall", "router", "switch", "server");
+    }
+
+    @Test
+    void tileElements_rejectsOversizedTypeToken() {
+        String longType = "a".repeat(65);
+        ResponseEntity<String> resp = restTemplate.getForEntity(
+                "/api/topology/tiles/14/8192/5460/elements?types=" + longType, String.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

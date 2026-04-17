@@ -6,6 +6,7 @@ import {
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
+  shouldFetchEndpoint,
 } from '@/composables/use-tile-loader'
 
 describe('bboxToTiles', () => {
@@ -55,10 +56,10 @@ describe('bboxToTiles', () => {
 
   it('computes visible element count from visible tile keys only', () => {
     const tileStates = new Map([
-      ['2/1/1', { elementsLoaded: true, linksLoaded: true, elementCount: 120, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
-      ['2/1/2', { elementsLoaded: true, linksLoaded: false, elementCount: 80, elementRetryCount: 1, linkRetryCount: 2, nextElementRetryAt: 0, nextLinkRetryAt: 1000 }],
-      ['2/2/1', { elementsLoaded: false, linksLoaded: true, elementCount: 999, elementRetryCount: 3, linkRetryCount: 0, nextElementRetryAt: 3000, nextLinkRetryAt: 0 }],
-      ['2/2/2', { elementsLoaded: true, linksLoaded: true, elementCount: 60, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
+      ['2/1/1', { elementsLoaded: true, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 120, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
+      ['2/1/2', { elementsLoaded: true, linksLoaded: false, elementsInFlight: false, linksInFlight: false, elementCount: 80, elementRetryCount: 1, linkRetryCount: 2, nextElementRetryAt: 0, nextLinkRetryAt: 1000 }],
+      ['2/2/1', { elementsLoaded: false, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 999, elementRetryCount: 3, linkRetryCount: 0, nextElementRetryAt: 3000, nextLinkRetryAt: 0 }],
+      ['2/2/2', { elementsLoaded: true, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 60, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
     ])
 
     const visible = ['2/1/1', '2/1/2', '2/2/1']
@@ -70,6 +71,17 @@ describe('bboxToTiles', () => {
     expect(computeTileRetryDelayMs(2)).toBe(1000)
     expect(computeTileRetryDelayMs(3)).toBe(2000)
     expect(computeTileRetryDelayMs(7)).toBe(30000)
+  })
+})
+
+describe('shouldFetchEndpoint', () => {
+  it('returns false when endpoint is already in flight', () => {
+    expect(shouldFetchEndpoint(false, true, 0, Date.now())).toBe(false)
+  })
+
+  it('returns true when endpoint is not loaded, not in flight, and retry window is open', () => {
+    const now = Date.now()
+    expect(shouldFetchEndpoint(false, false, now - 1, now)).toBe(true)
   })
 })
 
