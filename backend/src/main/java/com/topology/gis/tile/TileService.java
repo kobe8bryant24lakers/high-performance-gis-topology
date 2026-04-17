@@ -15,20 +15,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class TileService {
 
+    // TODO(low): Replace static generation with a monotonic server-side data generation tied to writes for robust client cache invalidation.
     private static final long CURRENT_GENERATION = 1L;
     /** Hard cap pushed into SQL LIMIT — prevents full-scan materialization at the DB layer. */
     static final int TILE_ELEMENT_CAP = 10_000;
     /** Hard cap on links returned per tile request. */
     static final int TILE_LINK_CAP = 50_000;
+    /** Hot tile cache limits repeated DB work for jittery pan/zoom traffic. */
+    static final int TILE_CACHE_MAX_ENTRIES = 2_000;
+    static final long TILE_CACHE_TTL_MS = 5_000L;
 
     private final NetworkElementMapper elementMapper;
     private final TopologyLinkMapper linkMapper;
     private final ObjectMapper objectMapper;
+    private final Map<CacheKey, CacheEntry<TileElementsResponse>> elementTileCache = createCacheMap();
+    private final Map<CacheKey, CacheEntry<TileLinksResponse>> linksTileCache = createCacheMap();
 
     public TileService(NetworkElementMapper elementMapper,
                        TopologyLinkMapper linkMapper,
@@ -42,6 +47,8 @@ public class TileService {
      * Tile bounding box in WGS84. Mirrors the TypeScript tileToBBox() in data-generator.ts.
      */
     public record TileBBox(double west, double south, double east, double north) {}
+    private record CacheKey(int z, int x, int y, String typesParam, String propFilter, long generation) {}
+    private record CacheEntry<T>(long expiresAtEpochMs, T value) {}
 
     public static TileBBox tileToBBox(int z, int x, int y) {
         double n = Math.pow(2, z);
@@ -69,6 +76,31 @@ public class TileService {
             }
         }
         return "{" + String.join(",", types) + "}";
+    }
+
+    private static <T> Map<CacheKey, CacheEntry<T>> createCacheMap() {
+        return Collections.synchronizedMap(new LinkedHashMap<>(256, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<CacheKey, CacheEntry<T>> eldest) {
+                return size() > TILE_CACHE_MAX_ENTRIES;
+            }
+        });
+    }
+
+    private static <T> T getCached(Map<CacheKey, CacheEntry<T>> cache, CacheKey key) {
+        CacheEntry<T> entry = cache.get(key);
+        if (entry == null) {
+            return null;
+        }
+        if (System.currentTimeMillis() > entry.expiresAtEpochMs()) {
+            cache.remove(key);
+            return null;
+        }
+        return entry.value();
+    }
+
+    private static <T> void putCached(Map<CacheKey, CacheEntry<T>> cache, CacheKey key, T value) {
+        cache.put(key, new CacheEntry<>(System.currentTimeMillis() + TILE_CACHE_TTL_MS, value));
     }
 
     /**
@@ -105,7 +137,7 @@ public class TileService {
     private String buildPropFilterJson(Map<String, String> propFilters) {
         if (propFilters == null || propFilters.isEmpty()) return null;
         try {
-            return objectMapper.writeValueAsString(propFilters);
+            return objectMapper.writeValueAsString(new TreeMap<>(propFilters));
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to serialize property filters", e);
         }
@@ -116,22 +148,32 @@ public class TileService {
             List<String> types,
             Map<String, String> propFilters) {
 
+        // Validate client tokens before zoom intersection so malformed input is never silently dropped.
+        toTypesParam(types);
         List<String> effective = effectiveTypes(z, types);
         if (effective.isEmpty() && (types != null && !types.isEmpty())) {
             // Client requested types that are all outside the zoom-allowed set → no DB call
             return new TileElementsResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
         }
 
-        TileBBox bbox = tileToBBox(z, x, y);
         String typesParam = toTypesParam(effective);
         String propFilter = buildPropFilterJson(propFilters);
+        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, propFilter, CURRENT_GENERATION);
+        TileElementsResponse cached = getCached(elementTileCache, cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        TileBBox bbox = tileToBBox(z, x, y);
 
         List<NetworkElement> entities = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
                 typesParam, propFilter, TILE_ELEMENT_CAP);
 
         List<NetworkElementDto> dtos = entities.stream().map(this::toDto).toList();
-        return new TileElementsResponse(dtos, List.of(), CURRENT_GENERATION, List.of());
+        TileElementsResponse response = new TileElementsResponse(dtos, List.of(), CURRENT_GENERATION, List.of());
+        putCached(elementTileCache, cacheKey, response);
+        return response;
     }
 
     public TileLinksResponse getTileLinks(
@@ -139,33 +181,37 @@ public class TileService {
             List<String> types,
             Map<String, String> propFilters) {
 
+        // Validate client tokens before zoom intersection so malformed input is never silently dropped.
+        toTypesParam(types);
         List<String> effective = effectiveTypes(z, types);
         if (effective.isEmpty() && (types != null && !types.isEmpty())) {
             return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
         }
 
-        TileBBox bbox = tileToBBox(z, x, y);
         String typesParam = toTypesParam(effective);
         String propFilter = buildPropFilterJson(propFilters);
+        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, propFilter, CURRENT_GENERATION);
+        TileLinksResponse cached = getCached(linksTileCache, cacheKey);
+        if (cached != null) {
+            return cached;
+        }
 
-        List<NetworkElement> tileElements = elementMapper.findInTile(
+        TileBBox bbox = tileToBBox(z, x, y);
+
+        List<String> tileElementIdsList = elementMapper.findIdsInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
                 typesParam, propFilter, TILE_ELEMENT_CAP);
 
-        if (tileElements.isEmpty()) {
+        if (tileElementIdsList.isEmpty()) {
             return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
         }
 
-        Set<String> tileElementIds = tileElements.stream()
-                .map(NetworkElement::getId)
-                .collect(Collectors.toSet());
+        Set<String> tileElementIds = new HashSet<>(tileElementIdsList);
 
-        // PostgreSQL array literal: {id1,id2,...}
-        String idsParam = "{" + String.join(",", tileElementIds) + "}";
-        List<TopologyLink> links = linkMapper.findLinksForElements(idsParam, TILE_LINK_CAP);
+        List<TopologyLink> links = linkMapper.findLinksForElements(new ArrayList<>(tileElementIds), TILE_LINK_CAP);
 
         // Collect stub IDs: endpoints outside the tile
-        Set<String> stubIds = new LinkedHashSet<>();
+        Set<String> stubIds = new LinkedHashSet<>(Math.min(links.size() * 2, TILE_LINK_CAP * 2));
         for (TopologyLink link : links) {
             if (!tileElementIds.contains(link.getSourceId())) stubIds.add(link.getSourceId());
             if (!tileElementIds.contains(link.getTargetId())) stubIds.add(link.getTargetId());
@@ -173,13 +219,13 @@ public class TileService {
 
         List<EndpointStubDto> stubs = List.of();
         if (!stubIds.isEmpty()) {
-            stubs = elementMapper.selectBatchIds(stubIds).stream()
-                    .map(e -> new EndpointStubDto(e.getId(), e.getLng(), e.getLat()))
-                    .toList();
+            stubs = elementMapper.findEndpointStubsByIds(stubIds);
         }
 
         List<TopologyLinkDto> linkDtos = links.stream().map(this::toLinkDto).toList();
-        return new TileLinksResponse(linkDtos, stubs, CURRENT_GENERATION, List.of());
+        TileLinksResponse response = new TileLinksResponse(linkDtos, stubs, CURRENT_GENERATION, List.of());
+        putCached(linksTileCache, cacheKey, response);
+        return response;
     }
 
     public NetworkElementDto toDto(NetworkElement e) {

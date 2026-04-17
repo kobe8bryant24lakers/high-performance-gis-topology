@@ -8,6 +8,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -15,7 +16,8 @@ public abstract class BaseIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> postgres =
-            new PostgreSQLContainer<>("postgis/postgis:15-3.4")
+            new PostgreSQLContainer<>(
+                    DockerImageName.parse("postgis/postgis:15-3.4").asCompatibleSubstituteFor("postgres"))
                     .withDatabaseName("gis_topology_test")
                     .withUsername("test")
                     .withPassword("test");

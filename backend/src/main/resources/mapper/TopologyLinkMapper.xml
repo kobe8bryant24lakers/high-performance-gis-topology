@@ -17,11 +17,18 @@
                 typeHandler="com.topology.gis.shared.typehandler.JsonbTypeHandler"/>
     </resultMap>
 
-    <!-- Links touching any of the given element IDs (PostgreSQL array literal '{id1,id2,...}') -->
+    <!-- Links touching any of the given element IDs. -->
     <select id="findLinksForElements" resultMap="topologyLinkResultMap">
         SELECT id, type, source_id, target_id, directed, weight, status, version, updated_at, properties
         FROM topology_links
-        WHERE source_id = ANY(#{ids}::text[]) OR target_id = ANY(#{ids}::text[])
+        WHERE source_id IN
+              <foreach item="id" collection="ids" open="(" separator="," close=")">
+                  #{id}
+              </foreach>
+           OR target_id IN
+              <foreach item="id" collection="ids" open="(" separator="," close=")">
+                  #{id}
+              </foreach>
         ORDER BY id
         LIMIT #{limit}
     </select>

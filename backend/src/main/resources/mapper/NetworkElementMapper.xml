@@ -18,11 +18,35 @@
     <select id="findInTile" resultMap="networkElementResultMap">
         SELECT id, type, label, lng, lat, version, updated_at, properties
         FROM network_elements
-        WHERE ST_Within(location, ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326))
+        WHERE location && ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND lng &gt;= #{west} AND lng &lt; #{east}
+          AND lat &gt; #{south} AND lat &lt;= #{north}
           AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
           AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
         ORDER BY id
         LIMIT #{limit}
+    </select>
+
+    <select id="findIdsInTile" resultType="string">
+        SELECT id
+        FROM network_elements
+        WHERE location && ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND lng &gt;= #{west} AND lng &lt; #{east}
+          AND lat &gt; #{south} AND lat &lt;= #{north}
+          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <select id="findEndpointStubsByIds" resultType="com.topology.gis.shared.dto.EndpointStubDto">
+        SELECT id, lng, lat
+        FROM network_elements
+        WHERE id IN
+              <foreach item="id" collection="ids" open="(" separator="," close=")">
+                  #{id}
+              </foreach>
+        ORDER BY id
     </select>
 
     <select id="search" resultMap="networkElementResultMap">
