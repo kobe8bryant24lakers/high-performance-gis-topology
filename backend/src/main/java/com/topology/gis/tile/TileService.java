@@ -77,6 +77,33 @@ public class TileService {
     }
 
     /**
+     * Returns the set of element types visible at the given zoom level.
+     * Each tier adds one layer of the network hierarchy to control density
+     * while preserving connectivity at every zoom.
+     */
+    static Set<String> allowedTypesForZoom(int z) {
+        if (z <= 5)  return Set.of("firewall");
+        if (z <= 8)  return Set.of("firewall", "router");
+        if (z <= 11) return Set.of("firewall", "router", "switch");
+        if (z <= 14) return Set.of("firewall", "router", "switch", "server");
+        return Set.of("firewall", "router", "switch", "server", "access-point");
+    }
+
+    /**
+     * Computes the effective type list by intersecting the zoom-allowed set with the
+     * client-requested types.
+     *
+     * Rules:
+     *   - null or empty clientTypes → return all zoom-allowed types
+     *   - non-empty clientTypes → return intersection (may be empty)
+     */
+    static List<String> effectiveTypes(int z, List<String> clientTypes) {
+        Set<String> allowed = allowedTypesForZoom(z);
+        if (clientTypes == null || clientTypes.isEmpty()) return new ArrayList<>(allowed);
+        return clientTypes.stream().filter(allowed::contains).toList();
+    }
+
+    /**
      * Merges prop.* filter map into a JSON string for the JSONB @> operator.
      * Returns null when the map is empty.
      */
