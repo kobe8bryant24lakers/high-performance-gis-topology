@@ -3,7 +3,6 @@ package com.topology.gis.tile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.topology.gis.shared.dto.EndpointStubDto;
 import com.topology.gis.shared.dto.NetworkElementDto;
-import com.topology.gis.shared.dto.TopologyClusterDto;
 import com.topology.gis.shared.dto.TopologyLinkDto;
 import com.topology.gis.shared.entity.NetworkElement;
 import com.topology.gis.shared.entity.TopologyLink;
@@ -21,7 +20,6 @@ import java.util.stream.Collectors;
 @Service
 public class TileService {
 
-    public static final int CLUSTER_ZOOM_THRESHOLD = 12;
     private static final long CURRENT_GENERATION = 1L;
     /** Hard cap pushed into SQL LIMIT — prevents full-scan materialization at the DB layer. */
     static final int TILE_ELEMENT_CAP = 10_000;
@@ -30,16 +28,13 @@ public class TileService {
 
     private final NetworkElementMapper elementMapper;
     private final TopologyLinkMapper linkMapper;
-    private final ClusteringService clusteringService;
     private final ObjectMapper objectMapper;
 
     public TileService(NetworkElementMapper elementMapper,
                        TopologyLinkMapper linkMapper,
-                       ClusteringService clusteringService,
                        ObjectMapper objectMapper) {
         this.elementMapper = elementMapper;
         this.linkMapper = linkMapper;
-        this.clusteringService = clusteringService;
         this.objectMapper = objectMapper;
     }
 
@@ -121,18 +116,19 @@ public class TileService {
             List<String> types,
             Map<String, String> propFilters) {
 
+        List<String> effective = effectiveTypes(z, types);
+        if (effective.isEmpty() && (types != null && !types.isEmpty())) {
+            // Client requested types that are all outside the zoom-allowed set → no DB call
+            return new TileElementsResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
+        }
+
         TileBBox bbox = tileToBBox(z, x, y);
-        String typesParam = toTypesParam(types);
+        String typesParam = toTypesParam(effective);
         String propFilter = buildPropFilterJson(propFilters);
 
         List<NetworkElement> entities = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
                 typesParam, propFilter, TILE_ELEMENT_CAP);
-
-        if (z < CLUSTER_ZOOM_THRESHOLD && !entities.isEmpty()) {
-            List<TopologyClusterDto> clusters = clusteringService.cluster(entities, z, x, y, bbox);
-            return new TileElementsResponse(List.of(), clusters, CURRENT_GENERATION, List.of());
-        }
 
         List<NetworkElementDto> dtos = entities.stream().map(this::toDto).toList();
         return new TileElementsResponse(dtos, List.of(), CURRENT_GENERATION, List.of());
@@ -143,8 +139,13 @@ public class TileService {
             List<String> types,
             Map<String, String> propFilters) {
 
+        List<String> effective = effectiveTypes(z, types);
+        if (effective.isEmpty() && (types != null && !types.isEmpty())) {
+            return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
+        }
+
         TileBBox bbox = tileToBBox(z, x, y);
-        String typesParam = toTypesParam(types);
+        String typesParam = toTypesParam(effective);
         String propFilter = buildPropFilterJson(propFilters);
 
         List<NetworkElement> tileElements = elementMapper.findInTile(

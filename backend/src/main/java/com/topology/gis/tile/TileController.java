@@ -47,11 +47,6 @@ public class TileController {
             @RequestParam MultiValueMap<String, String> allParams) {
 
         validateTileCoordinates(z, x, y);
-        if (z < TileService.CLUSTER_ZOOM_THRESHOLD) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Links endpoint is not available below zoom level " + TileService.CLUSTER_ZOOM_THRESHOLD
-                    + "; use the elements endpoint which returns clusters at low zoom");
-        }
         return tileService.getTileLinks(z, x, y, parseTypes(typesParam), parsePropFilters(allParams));
     }
 
