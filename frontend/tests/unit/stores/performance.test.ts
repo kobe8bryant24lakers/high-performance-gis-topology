@@ -26,10 +26,10 @@ describe('usePerformanceStore', () => {
     expect(store.degradationLevel).toBe('minimal')
   })
 
-  it('returns "clusters-only" degradation level for > 100K elements', () => {
+  it('keeps "minimal" degradation level for > 100K elements', () => {
     const store = usePerformanceStore()
     store.visibleElementCount = 150000
-    expect(store.degradationLevel).toBe('clusters-only')
+    expect(store.degradationLevel).toBe('minimal')
   })
 
   it('computes hoverEnabled based on degradation', () => {

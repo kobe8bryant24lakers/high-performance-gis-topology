@@ -3,10 +3,14 @@ package com.topology.gis;
 import com.topology.gis.tile.dto.TileElementsResponse;
 import com.topology.gis.tile.dto.TileLinksResponse;
 import com.topology.gis.admin.SeedService;
+import com.topology.gis.shared.mapper.NetworkElementMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +18,8 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private SeedService seedService;
+    @Autowired
+    private NetworkElementMapper elementMapper;
 
     @BeforeEach
     void setUp() {
@@ -70,5 +76,25 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         assertThat(resp.getBody()).isNotNull();
         assertThat(resp.getBody().generation()).isEqualTo(1L);
         assertThat(resp.getBody().removedLinkIds()).isEmpty();
+    }
+
+    @Test
+    void tileLinks_excludesStubsOutsideZoomAllowedTypes() {
+        ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
+                "/api/topology/tiles/14/8192/5460/links", TileLinksResponse.class);
+
+        assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
+        TileLinksResponse body = resp.getBody();
+        assertThat(body).isNotNull();
+        if (body.stubs().isEmpty()) {
+            return;
+        }
+
+        Set<String> stubIds = body.stubs().stream().map(s -> s.id()).collect(Collectors.toSet());
+        Set<String> stubTypes = elementMapper.selectBatchIds(stubIds).stream()
+                .map(e -> e.getType())
+                .collect(Collectors.toSet());
+
+        assertThat(stubTypes).isSubsetOf("firewall", "router", "switch", "server");
     }
 }

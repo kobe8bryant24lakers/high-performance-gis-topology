@@ -3,7 +3,6 @@ import {
   generateElements,
   generateLinks,
   elementsInTile,
-  generateClustersForTile,
   resetSeed,
 } from './data-generator'
 import type { NetworkElement, TileElementsResponse, TileLinksResponse } from '@/types/topology'
@@ -23,24 +22,40 @@ function linksForElements(elements: NetworkElement[]) {
   return ALL_LINKS.filter((l) => ids.has(l.sourceId) || ids.has(l.targetId))
 }
 
+function allowedTypesForZoom(z: number): Set<string> {
+  if (z <= 5) return new Set(['firewall'])
+  if (z <= 8) return new Set(['firewall', 'router'])
+  if (z <= 11) return new Set(['firewall', 'router', 'switch'])
+  if (z <= 14) return new Set(['firewall', 'router', 'switch', 'server'])
+  return new Set(['firewall', 'router', 'switch', 'server', 'access-point'])
+}
+
+function effectiveTypes(z: number, requestedTypes: string[]): Set<string> {
+  const allowed = allowedTypesForZoom(z)
+  if (requestedTypes.length === 0) return allowed
+  return new Set(requestedTypes.filter((type) => allowed.has(type)))
+}
+
 export const handlers = [
-  http.get('/api/topology/tiles/:z/:x/:y/elements', ({ params }) => {
+  http.get('/api/topology/tiles/:z/:x/:y/elements', ({ params, request }) => {
     const z = Number(params.z)
     const x = Number(params.x)
     const y = Number(params.y)
-    const elements = elementsInTile(ALL_ELEMENTS, z, x, y)
-
-    const CLUSTER_ZOOM_THRESHOLD = 12
-    if (z < CLUSTER_ZOOM_THRESHOLD && elements.length > 0) {
-      const clusters = generateClustersForTile(elements, z, x, y)
-      const response: TileElementsResponse = {
+    const url = new URL(request.url)
+    const requestedTypes = (url.searchParams.get('types') ?? '')
+      .split(',')
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length > 0)
+    const types = effectiveTypes(z, requestedTypes)
+    if (requestedTypes.length > 0 && types.size === 0) {
+      return HttpResponse.json({
         elements: [],
-        clusters,
+        clusters: [],
         generation: 1,
         removedIds: [],
-      }
-      return HttpResponse.json(response)
+      } satisfies TileElementsResponse)
     }
+    const elements = elementsInTile(ALL_ELEMENTS, z, x, y).filter((el) => types.has(el.type))
 
     const response: TileElementsResponse = {
       elements,
@@ -51,12 +66,32 @@ export const handlers = [
     return HttpResponse.json(response)
   }),
 
-  http.get('/api/topology/tiles/:z/:x/:y/links', ({ params }) => {
+  http.get('/api/topology/tiles/:z/:x/:y/links', ({ params, request }) => {
     const z = Number(params.z)
     const x = Number(params.x)
     const y = Number(params.y)
-    const tileElements = elementsInTile(ALL_ELEMENTS, z, x, y)
-    const tileLinks = linksForElements(tileElements)
+    const url = new URL(request.url)
+    const requestedTypes = (url.searchParams.get('types') ?? '')
+      .split(',')
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length > 0)
+    const types = effectiveTypes(z, requestedTypes)
+    if (requestedTypes.length > 0 && types.size === 0) {
+      return HttpResponse.json({
+        links: [],
+        stubs: [],
+        generation: 1,
+        removedLinkIds: [],
+      } satisfies TileLinksResponse)
+    }
+
+    const allById = new Map(ALL_ELEMENTS.map((e) => [e.id, e]))
+    const tileElements = elementsInTile(ALL_ELEMENTS, z, x, y).filter((el) => types.has(el.type))
+    const tileLinks = linksForElements(tileElements).filter((link) => {
+      const src = allById.get(link.sourceId)
+      const tgt = allById.get(link.targetId)
+      return !!src && !!tgt && types.has(src.type) && types.has(tgt.type)
+    })
     const tileElementIds = new Set(tileElements.map((e) => e.id))
 
     const stubs: { id: string; lng: number; lat: number }[] = []
@@ -64,7 +99,7 @@ export const handlers = [
     for (const link of tileLinks) {
       for (const endpointId of [link.sourceId, link.targetId]) {
         if (!tileElementIds.has(endpointId) && !seenStubs.has(endpointId)) {
-          const el = ALL_ELEMENTS.find((e) => e.id === endpointId)
+          const el = allById.get(endpointId)
           if (el) {
             stubs.push({ id: el.id, lng: el.lng, lat: el.lat })
             seenStubs.add(endpointId)

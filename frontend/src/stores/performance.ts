@@ -2,13 +2,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-export type DegradationLevel = 'full' | 'reduced' | 'minimal' | 'clusters-only'
+export type DegradationLevel = 'full' | 'reduced' | 'minimal'
 export type MemoryPressure = 'normal' | 'warning' | 'critical'
 
 const DEGRADATION_THRESHOLDS = {
   reduced: 10_000,
   minimal: 50_000,
-  clustersOnly: 100_000,
 } as const
 
 const HEAP_WARNING_MB = 900
@@ -21,7 +20,6 @@ export const usePerformanceStore = defineStore('performance', () => {
   const pinnedNodeIds = ref(new Set<string>())
 
   const degradationLevel = computed<DegradationLevel>(() => {
-    if (visibleElementCount.value >= DEGRADATION_THRESHOLDS.clustersOnly) return 'clusters-only'
     if (visibleElementCount.value >= DEGRADATION_THRESHOLDS.minimal) return 'minimal'
     if (visibleElementCount.value >= DEGRADATION_THRESHOLDS.reduced) return 'reduced'
     return 'full'

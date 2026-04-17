@@ -142,6 +142,19 @@ class TileServiceZoomPolicyTest {
         assertThat(tileQueryCount.get()).isEqualTo(1);
     }
 
+    @Test
+    void getTileLinks_emptyTileResult_cacheHit_skipsSecondDbQuery() {
+        AtomicInteger tileQueryCount = new AtomicInteger();
+        NetworkElementMapper elementMapper = stubElementMapper(tileQueryCount, List.of());
+        TopologyLinkMapper linkMapper = stubLinkMapper();
+        TileService service = new TileService(elementMapper, linkMapper, new ObjectMapper());
+
+        service.getTileLinks(5, 0, 0, List.of(), Map.of());
+        service.getTileLinks(5, 0, 0, List.of(), Map.of());
+
+        assertThat(tileQueryCount.get()).isEqualTo(1);
+    }
+
     private static NetworkElementMapper stubElementMapper(AtomicInteger tileQueryCount, List<NetworkElement> tileResponse) {
         return (NetworkElementMapper) Proxy.newProxyInstance(
                 NetworkElementMapper.class.getClassLoader(),

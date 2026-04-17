@@ -19,17 +19,27 @@
 
     <!-- Links touching any of the given element IDs. -->
     <select id="findLinksForElements" resultMap="topologyLinkResultMap">
-        SELECT id, type, source_id, target_id, directed, weight, status, version, updated_at, properties
-        FROM topology_links
-        WHERE source_id IN
-              <foreach item="id" collection="ids" open="(" separator="," close=")">
-                  #{id}
-              </foreach>
-           OR target_id IN
-              <foreach item="id" collection="ids" open="(" separator="," close=")">
-                  #{id}
-              </foreach>
-        ORDER BY id
+        SELECT tl.id, tl.type, tl.source_id, tl.target_id, tl.directed, tl.weight, tl.status, tl.version, tl.updated_at, tl.properties
+        FROM topology_links tl
+        <if test="types != null">
+            JOIN network_elements src ON src.id = source_id
+            JOIN network_elements tgt ON tgt.id = target_id
+        </if>
+        WHERE (
+              tl.source_id IN
+                <foreach item="id" collection="ids" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+           OR tl.target_id IN
+                <foreach item="id" collection="ids" open="(" separator="," close=")">
+                    #{id}
+                </foreach>
+        )
+        <if test="types != null">
+          AND src.type = ANY(#{types}::text[])
+          AND tgt.type = ANY(#{types}::text[])
+        </if>
+        ORDER BY tl.id
         LIMIT #{limit}
     </select>
 

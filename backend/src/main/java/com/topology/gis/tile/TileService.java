@@ -203,12 +203,14 @@ public class TileService {
                 typesParam, propFilter, TILE_ELEMENT_CAP);
 
         if (tileElementIdsList.isEmpty()) {
-            return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
+            TileLinksResponse response = new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
+            putCached(linksTileCache, cacheKey, response);
+            return response;
         }
 
         Set<String> tileElementIds = new HashSet<>(tileElementIdsList);
 
-        List<TopologyLink> links = linkMapper.findLinksForElements(new ArrayList<>(tileElementIds), TILE_LINK_CAP);
+        List<TopologyLink> links = linkMapper.findLinksForElements(new ArrayList<>(tileElementIds), typesParam, TILE_LINK_CAP);
 
         // Collect stub IDs: endpoints outside the tile
         Set<String> stubIds = new LinkedHashSet<>(Math.min(links.size() * 2, TILE_LINK_CAP * 2));
