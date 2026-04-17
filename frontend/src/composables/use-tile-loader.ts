@@ -210,7 +210,7 @@ export function useTileLoader() {
       state.elementsLoaded = true
       state.elementRetryCount = 0
       state.nextElementRetryAt = 0
-      state.elementCount = elemResult.value!.elements.length + elemResult.value!.clusters.length
+      state.elementCount = elemResult.value!.elements.length
     } else if (fetchElements && elemResult.status === 'rejected' && !isAbortError(elemResult.reason)) {
       recordEndpointFailure(state, 'elements', now)
     }
