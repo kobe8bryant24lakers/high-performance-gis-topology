@@ -22,7 +22,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void tileElements_atHighZoom_returnsElements() {
-        // z=12 is the threshold; z=14 should return individual elements
+        // z=14 allows firewall, router, switch, server (not access-point)
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
                 "/api/topology/tiles/14/8192/5460/elements", TileElementsResponse.class);
 
@@ -34,22 +34,17 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void tileElements_atLowZoom_returnsClusters() {
-        // z=8 is below threshold, should return clusters
+    void tileElements_atLowZoom_returnsOnlyZoomAllowedTypes() {
+        // z=8 allows only firewall and router — no clusters, no switches/servers/access-points
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
                 "/api/topology/tiles/8/128/85/elements", TileElementsResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         TileElementsResponse body = resp.getBody();
         assertThat(body).isNotNull();
-        // If any elements fall in this tile, clusters should be returned
-        if (!body.clusters().isEmpty()) {
-            assertThat(body.elements()).isEmpty();
-            body.clusters().forEach(c -> {
-                assertThat(c.id()).matches("tile:8/\\d+/\\d+:q[0-3]");
-                assertThat(c.count()).isPositive();
-            });
-        }
+        assertThat(body.clusters()).isEmpty();
+        body.elements().forEach(el ->
+                assertThat(el.type()).isIn("firewall", "router"));
     }
 
     @Test
