@@ -6,11 +6,11 @@
 ## Goals
 
 1. Remove clustering — display individual elements at all zoom levels.
-2. Zoom-based type visibility — show device types progressively as the user zooms in, controlling element density while preserving network integrity.
+2. Zoom-based type visibility — show device types progressively as the user zooms in, controlling element density while preserving network integrity when no client type filter is active.
 
 ## Non-Goals
 
-- Frontend viewport rendering filter (excluded after analysis: LRU cache already caps the graph at 200 K elements; deck.gl handles this efficiently).
+- Frontend viewport rendering filter (excluded after analysis: `LruTileCache(200, 200_000)` already caps the in-memory graph at 200 K elements; deck.gl handles this volume efficiently).
 - Changing the tile-fetching protocol or URL structure.
 - Modifying search or neighbor endpoints.
 
@@ -26,25 +26,29 @@
 
 Always return individual `NetworkElementDto` objects regardless of zoom level. No clusters are ever produced or rendered.
 
+### Response contract
+
+The `TileElementsResponse` DTO retains the `clusters` field but it is always returned as an empty list. This preserves backward compatibility for any downstream client that currently reads the field, and makes rollback (re-enabling the clustering branch) a zero-risk one-line change.
+
 ### Backend changes
 
 **`TileService.java`**
 - Delete the `CLUSTER_ZOOM_THRESHOLD` constant.
 - Remove the `if (z < CLUSTER_ZOOM_THRESHOLD && !entities.isEmpty())` branch and the `ClusteringService` call.
-- `getTileElements()` always maps entities → `NetworkElementDto` list.
+- `getTileElements()` always maps entities → `NetworkElementDto` list; `clusters` is always `List.of()`.
 - The `ClusteringService` field and constructor injection are removed.
 
 **`ClusteringService.java`** — deleted entirely.
 
-### Frontend changes
+### Frontend changes (Optimization 1 only)
 
 **`use-deck-layers.ts`**
 - Remove the cluster `ScatterplotLayer` (id `clusters`) and `TextLayer` (id `cluster-labels`).
 - Remove the `getClusters()` call and the `clusters` variable.
-- Import of `TopologyCluster` type removed if no longer referenced.
+- Remove unused `TopologyCluster` import if no longer referenced elsewhere.
 
 **`use-tile-loader.ts`**
-- Line `state.elementCount = elemResult.value!.elements.length + elemResult.value!.clusters.length`
+- `state.elementCount = elemResult.value!.elements.length + elemResult.value!.clusters.length`
   → `state.elementCount = elemResult.value!.elements.length`
 
 ---
@@ -55,25 +59,33 @@ Always return individual `NetworkElementDto` objects regardless of zoom level. N
 
 The network is a hierarchy. Revealing device types layer-by-layer as the user zooms in gives two properties:
 
-1. **Element count control** — fewer, higher-value devices appear at coarse zoom where the viewport is large.
-2. **Network integrity** — each tier includes all types needed to form a connected sub-network: firewalls connect to routers, routers to switches, switches to servers, servers/switches to access-points.
+1. **Element count control** — fewer, higher-value devices appear at coarse zoom where the viewport covers a large geographic area.
+2. **Network integrity** — when no client type filter is active, each tier includes all types needed to form a connected sub-network: firewalls connect to routers, routers to switches, switches to servers and access-points. This guarantee does not hold when a restrictive client type filter removes connector types; such a filter is accepted and returns a partial (potentially disconnected) view.
 
 ### Zoom tier table
 
-| Zoom | Types visible | Cumulative pool | Added layer |
-|------|--------------|-----------------|-------------|
-| 1–5  | firewall | ~50 K (5 %) | Network perimeter |
-| 6–8  | + router | ~150 K (15 %) | Core backbone |
-| 9–11 | + switch | ~450 K (45 %) | Distribution layer |
-| 12–14 | + server | ~600 K (60 %) | Server infrastructure |
-| 15+  | + access-point | ~1 M (100 %) | Full detail |
+Element pool estimates are derived from the 1 M-element test dataset (type distribution: access-point 40 %, switch 30 %, server 15 %, router 10 %, firewall 5 %).
+
+| Zoom  | Types visible             | Cumulative pool  | Added layer         |
+|-------|--------------------------|------------------|---------------------|
+| 1–5   | firewall                 | ~50 K  (5 %)    | Network perimeter   |
+| 6–8   | + router                 | ~150 K (15 %)   | Core backbone       |
+| 9–11  | + switch                 | ~450 K (45 %)   | Distribution layer  |
+| 12–14 | + server                 | ~600 K (60 %)   | Server infrastructure |
+| 15+   | + access-point           | ~1 M   (100 %)  | Full detail         |
 
 ### Type intersection rule
 
 The effective type set = **zoom-allowed types ∩ client-requested types**.
 
-- If the client sends no type filter: zoom-allowed types are used directly.
-- If the client sends a type filter (e.g. `types=router`): only types present in both sets are queried. A client filter that selects types not visible at the current zoom returns an empty result — this is correct and intentional.
+- **No client filter (`types` absent or null):** zoom-allowed types are used directly.
+- **Empty client filter (`types=[]`):** treated identically to absent — zoom-allowed types are used directly.
+- **Non-empty client filter:** intersection is computed. Types in the client list that are not zoom-allowed are silently dropped. If the intersection is empty the endpoint returns an empty response immediately without hitting the DB.
+- **Invalid tokens:** rejected by the existing `toTypesParam()` validation (regex `^[a-zA-Z0-9_-]+$`), which runs before the intersection step.
+
+### No additional frontend changes for Optimization 2
+
+The zoom value `z` is already embedded in the tile URL (`/api/topology/tiles/{z}/{x}/{y}/elements`). The backend applies the zoom policy transparently. The frontend continues to send its optional user-facing type filter unchanged. (Frontend changes listed above apply to Optimization 1 only.)
 
 ### Backend changes
 
@@ -94,14 +106,9 @@ static Set<String> allowedTypesForZoom(int z) {
 Modify `getTileElements()` and `getTileLinks()`:
 
 1. Compute `zoomAllowed = allowedTypesForZoom(z)`.
-2. If `types` (client filter) is non-null: compute intersection. If the intersection is empty, return an empty response immediately without hitting the DB.
-3. Build `typesParam` from the effective set (always non-empty after the intersection guard).
-
-The existing `toTypesParam(List<String>)` helper is reused for the effective set.
-
-### No frontend changes required
-
-The zoom value `z` is already embedded in the tile URL (`/api/topology/tiles/{z}/{x}/{y}/elements`). The backend applies the policy transparently. The frontend continues to send its optional user-facing type filter unchanged.
+2. Normalise the client filter: treat null and empty list identically as "no filter".
+3. If client filter is present (non-empty after normalisation): compute intersection with `zoomAllowed`. If the intersection is empty, return an empty response immediately (no DB call).
+4. Build `typesParam` from the effective set using the existing `toTypesParam()` helper. The set is always non-empty at this point.
 
 ---
 
@@ -120,14 +127,25 @@ The zoom value `z` is already embedded in the tile URL (`/api/topology/tiles/{z}
 
 ### Backend unit tests (new)
 
-- `allowedTypesForZoom(3)` → `{firewall}`
-- `allowedTypesForZoom(7)` → `{firewall, router}`
-- `allowedTypesForZoom(10)` → `{firewall, router, switch}`
-- `allowedTypesForZoom(13)` → `{firewall, router, switch, server}`
-- `allowedTypesForZoom(15)` → all five types
-- Intersection: zoom=3, client=`[router]` → empty response (no DB call)
-- Intersection: zoom=10, client=`[router, server]` → effective = `{router}` only
+**`allowedTypesForZoom` — interior values:**
+- zoom=3 → `{firewall}`
+- zoom=7 → `{firewall, router}`
+- zoom=10 → `{firewall, router, switch}`
+- zoom=13 → `{firewall, router, switch, server}`
+- zoom=15 → all five types
+
+**`allowedTypesForZoom` — boundary values (off-by-one guards):**
+- zoom=5 → `{firewall}`; zoom=6 → `{firewall, router}`
+- zoom=8 → `{firewall, router}`; zoom=9 → `{firewall, router, switch}`
+- zoom=11 → `{firewall, router, switch}`; zoom=12 → `{firewall, router, switch, server}`
+- zoom=14 → `{firewall, router, switch, server}`; zoom=15 → all five types
+
+**Intersection rule:**
+- zoom=3, client=`[router]` → empty response, no DB call
+- zoom=10, client=`[router, server]` → effective = `{router}` (server not yet allowed)
+- zoom=10, client=`[]` → treated as no filter → effective = zoom-allowed set
+- zoom=10, client=null → effective = zoom-allowed set
 
 ### Existing integration tests
 
-`TileControllerIntegrationTest` uses tile `14/8192/5460` (z=14) which allows all types except access-point per the zoom policy. The 10 fixed tile elements in test-data.sql are: 2 router, 3 switch, 1 server, 4 access-point. At z=14, access-points are excluded → 6 elements visible in that tile. All assertions that previously checked `clusters().isEmpty()` trivially pass since clustering is removed. No seed count changes are required — the existing SQL test data already supports the expected results.
+`TileControllerIntegrationTest` uses tile `14/8192/5460` (z=14), which allows all types except access-point per the zoom policy. The 10 fixed tile elements in `test-data.sql` are: 2 router, 3 switch, 1 server, 4 access-point. At z=14, the 4 access-points are excluded → 6 elements returned. All existing assertions that checked `clusters().isEmpty()` trivially pass since the field is now always empty. No seed data changes are required.
