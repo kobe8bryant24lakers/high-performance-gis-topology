@@ -3,10 +3,15 @@ package com.topology.gis;
 import com.topology.gis.tile.dto.TileElementsResponse;
 import com.topology.gis.tile.dto.TileLinksResponse;
 import com.topology.gis.admin.SeedService;
+import com.topology.gis.shared.mapper.NetworkElementMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,6 +19,8 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private SeedService seedService;
+    @Autowired
+    private NetworkElementMapper elementMapper;
 
     @BeforeEach
     void setUp() {
@@ -22,7 +29,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void tileElements_atHighZoom_returnsElements() {
-        // z=12 is the threshold; z=14 should return individual elements
+        // z=14 allows firewall, router, switch, server (not access-point)
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
                 "/api/topology/tiles/14/8192/5460/elements", TileElementsResponse.class);
 
@@ -34,22 +41,17 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void tileElements_atLowZoom_returnsClusters() {
-        // z=8 is below threshold, should return clusters
+    void tileElements_atLowZoom_returnsOnlyZoomAllowedTypes() {
+        // z=8 allows only firewall and router — no clusters, no switches/servers/access-points
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
                 "/api/topology/tiles/8/128/85/elements", TileElementsResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         TileElementsResponse body = resp.getBody();
         assertThat(body).isNotNull();
-        // If any elements fall in this tile, clusters should be returned
-        if (!body.clusters().isEmpty()) {
-            assertThat(body.elements()).isEmpty();
-            body.clusters().forEach(c -> {
-                assertThat(c.id()).matches("tile:8/\\d+/\\d+:q[0-3]");
-                assertThat(c.count()).isPositive();
-            });
-        }
+        assertThat(body.clusters()).isEmpty();
+        body.elements().forEach(el ->
+                assertThat(el.type()).isIn("firewall", "router"));
     }
 
     @Test
@@ -75,5 +77,34 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         assertThat(resp.getBody()).isNotNull();
         assertThat(resp.getBody().generation()).isEqualTo(1L);
         assertThat(resp.getBody().removedLinkIds()).isEmpty();
+    }
+
+    @Test
+    void tileLinks_excludesStubsOutsideZoomAllowedTypes() {
+        ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
+                "/api/topology/tiles/14/8192/5460/links", TileLinksResponse.class);
+
+        assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
+        TileLinksResponse body = resp.getBody();
+        assertThat(body).isNotNull();
+        if (body.stubs().isEmpty()) {
+            return;
+        }
+
+        Set<String> stubIds = body.stubs().stream().map(s -> s.id()).collect(Collectors.toSet());
+        Set<String> stubTypes = elementMapper.selectBatchIds(stubIds).stream()
+                .map(e -> e.getType())
+                .collect(Collectors.toSet());
+
+        assertThat(stubTypes).isSubsetOf("firewall", "router", "switch", "server");
+    }
+
+    @Test
+    void tileElements_rejectsOversizedTypeToken() {
+        String longType = "a".repeat(65);
+        ResponseEntity<String> resp = restTemplate.getForEntity(
+                "/api/topology/tiles/14/8192/5460/elements?types=" + longType, String.class);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

@@ -133,7 +133,7 @@ describe('Performance Budgets', () => {
     expect(perfStore.pickEnabled).toBe(false)
 
     perfStore.visibleElementCount = 150000
-    expect(perfStore.degradationLevel).toBe('clusters-only')
+    expect(perfStore.degradationLevel).toBe('minimal')
   })
 
   it('client-side filter matching on 10K elements completes in < 100ms', () => {

@@ -1,9 +1,11 @@
 package com.topology.gis.shared.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.topology.gis.shared.dto.EndpointStubDto;
 import com.topology.gis.shared.entity.NetworkElement;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
@@ -18,6 +20,18 @@ public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
             @Param("propFilter") String propFilter,
             @Param("limit") int limit
     );
+
+    List<String> findIdsInTile(
+            @Param("west") double west,
+            @Param("south") double south,
+            @Param("east") double east,
+            @Param("north") double north,
+            @Param("types") String types,
+            @Param("propFilter") String propFilter,
+            @Param("limit") int limit
+    );
+
+    List<EndpointStubDto> findEndpointStubsByIds(@Param("ids") Collection<String> ids);
 
     List<NetworkElement> search(
             @Param("query") String query,

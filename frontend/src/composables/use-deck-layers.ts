@@ -1,12 +1,12 @@
 import { computed, shallowRef, watch } from 'vue'
-import { ScatterplotLayer, LineLayer, TextLayer } from '@deck.gl/layers'
+import { ScatterplotLayer, LineLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { telemetry } from '@/utils/telemetry'
-import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
+import type { NetworkElement, TopologyLink } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
@@ -119,37 +119,6 @@ export function useDeckLayers(
         },
       }),
     )
-
-    // Cluster layer (geo mode only, when clusters present)
-    const clusters = topologyStore.getClusters()
-    if (clusters.length > 0 && !viewModeStore.isSchematic) {
-      allLayers.push(
-        new ScatterplotLayer<TopologyCluster>({
-          id: 'clusters',
-          data: clusters,
-          getPosition: (d: TopologyCluster) => [d.centroidLng, d.centroidLat],
-          getRadius: (d: TopologyCluster) => Math.min(40, 10 + Math.sqrt(d.count) * 2),
-          getFillColor: [255, 200, 50, 180] as [number, number, number, number],
-          radiusUnits: 'pixels' as const,
-          pickable: true,
-        }),
-      )
-
-      allLayers.push(
-        new TextLayer<TopologyCluster>({
-          id: 'cluster-labels',
-          data: clusters,
-          getPosition: (d: TopologyCluster) => [d.centroidLng, d.centroidLat],
-          getText: (d: TopologyCluster) => String(d.count),
-          getSize: 12,
-          getColor: [30, 30, 30, 255] as [number, number, number, number],
-          getTextAnchor: 'middle',
-          getAlignmentBaseline: 'center',
-          fontFamily: 'sans-serif',
-          fontWeight: 700,
-        }),
-      )
-    }
 
     telemetry.emit('layer_rebuild_ms', performance.now() - layerBuildStart)
     return allLayers

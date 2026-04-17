@@ -111,4 +111,30 @@ describe('useTopologyStore', () => {
     store.evictTile('2/1/1')
     expect(store.graph.hasNode('a')).toBe(true)
   })
+
+  it('drops stale clusters for a tile when a newer response has no clusters', () => {
+    const store = useTopologyStore()
+    store.mergeTileElements('2/1/1', {
+      elements: [],
+      clusters: [{
+        id: 'tile:2/1/1:q0',
+        centroidLng: 0,
+        centroidLat: 0,
+        count: 10,
+        elementTypes: { router: 10 },
+      }],
+      generation: 1,
+      removedIds: [],
+    })
+    expect(store.clusterCount).toBe(1)
+
+    store.mergeTileElements('2/1/1', {
+      elements: [makeElement('a')],
+      clusters: [],
+      generation: 2,
+      removedIds: [],
+    })
+
+    expect(store.clusterCount).toBe(0)
+  })
 })

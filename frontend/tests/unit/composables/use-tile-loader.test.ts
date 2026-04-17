@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import {
   bboxToTiles,
+  buildFilterQueryString,
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
+  shouldFetchEndpoint,
 } from '@/composables/use-tile-loader'
 
 describe('bboxToTiles', () => {
@@ -33,12 +35,31 @@ describe('bboxToTiles', () => {
     expect(tiles).toEqual([{ z: 0, x: 0, y: 0 }])
   })
 
+  it('covers tiles across antimeridian-crossing bounds', () => {
+    const tiles = bboxToTiles(
+      { west: 170, south: -10, east: -170, north: 10 },
+      2,
+    )
+    const xSet = new Set(tiles.map((t) => t.x))
+    expect(xSet.has(0)).toBe(true)
+    expect(xSet.has(3)).toBe(true)
+  })
+
+  it('clamps +180 longitude to valid tile index', () => {
+    const tiles = bboxToTiles(
+      { west: 179.9, south: -1, east: 180, north: 1 },
+      3,
+    )
+    expect(tiles.length).toBeGreaterThan(0)
+    expect(Math.max(...tiles.map((t) => t.x))).toBe(7)
+  })
+
   it('computes visible element count from visible tile keys only', () => {
     const tileStates = new Map([
-      ['2/1/1', { elementsLoaded: true, linksLoaded: true, elementCount: 120, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
-      ['2/1/2', { elementsLoaded: true, linksLoaded: false, elementCount: 80, elementRetryCount: 1, linkRetryCount: 2, nextElementRetryAt: 0, nextLinkRetryAt: 1000 }],
-      ['2/2/1', { elementsLoaded: false, linksLoaded: true, elementCount: 999, elementRetryCount: 3, linkRetryCount: 0, nextElementRetryAt: 3000, nextLinkRetryAt: 0 }],
-      ['2/2/2', { elementsLoaded: true, linksLoaded: true, elementCount: 60, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
+      ['2/1/1', { elementsLoaded: true, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 120, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
+      ['2/1/2', { elementsLoaded: true, linksLoaded: false, elementsInFlight: false, linksInFlight: false, elementCount: 80, elementRetryCount: 1, linkRetryCount: 2, nextElementRetryAt: 0, nextLinkRetryAt: 1000 }],
+      ['2/2/1', { elementsLoaded: false, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 999, elementRetryCount: 3, linkRetryCount: 0, nextElementRetryAt: 3000, nextLinkRetryAt: 0 }],
+      ['2/2/2', { elementsLoaded: true, linksLoaded: true, elementsInFlight: false, linksInFlight: false, elementCount: 60, elementRetryCount: 0, linkRetryCount: 0, nextElementRetryAt: 0, nextLinkRetryAt: 0 }],
     ])
 
     const visible = ['2/1/1', '2/1/2', '2/2/1']
@@ -50,6 +71,27 @@ describe('bboxToTiles', () => {
     expect(computeTileRetryDelayMs(2)).toBe(1000)
     expect(computeTileRetryDelayMs(3)).toBe(2000)
     expect(computeTileRetryDelayMs(7)).toBe(30000)
+  })
+})
+
+describe('shouldFetchEndpoint', () => {
+  it('returns false when endpoint is already in flight', () => {
+    expect(shouldFetchEndpoint(false, true, 0, Date.now())).toBe(false)
+  })
+
+  it('returns true when endpoint is not loaded, not in flight, and retry window is open', () => {
+    const now = Date.now()
+    expect(shouldFetchEndpoint(false, false, now - 1, now)).toBe(true)
+  })
+})
+
+describe('buildFilterQueryString', () => {
+  it('encodes type tokens and property filters safely', () => {
+    const query = buildFilterQueryString(
+      ['Router', 'access point'],
+      { 'site.code': 'nyc 01' },
+    )
+    expect(query).toBe('?types=router,access%20point&prop.site.code=nyc%2001')
   })
 })
 

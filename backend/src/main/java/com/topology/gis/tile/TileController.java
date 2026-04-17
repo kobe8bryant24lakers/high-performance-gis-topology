@@ -12,13 +12,22 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.TreeMap;
 
 @RestController
 @RequestMapping("/api/topology/tiles")
 @Validated
 public class TileController {
+
+    private static final int MAX_TYPES = 16;
+    private static final int MAX_TYPE_TOKEN_LENGTH = 64;
+    private static final int MAX_PROP_FILTERS = 16;
+    private static final int MAX_PROP_KEY_LENGTH = 64;
+    private static final int MAX_PROP_VALUE_LENGTH = 256;
+    private static final java.util.regex.Pattern SAFE_PROP_KEY =
+            java.util.regex.Pattern.compile("^[a-zA-Z0-9_.-]+$");
 
     private final TileService tileService;
 
@@ -47,11 +56,6 @@ public class TileController {
             @RequestParam MultiValueMap<String, String> allParams) {
 
         validateTileCoordinates(z, x, y);
-        if (z < TileService.CLUSTER_ZOOM_THRESHOLD) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Links endpoint is not available below zoom level " + TileService.CLUSTER_ZOOM_THRESHOLD
-                    + "; use the elements endpoint which returns clusters at low zoom");
-        }
         return tileService.getTileLinks(z, x, y, parseTypes(typesParam), parsePropFilters(allParams));
     }
 
@@ -66,15 +70,64 @@ public class TileController {
 
     private List<String> parseTypes(String typesParam) {
         if (typesParam == null || typesParam.isBlank()) return List.of();
-        return Arrays.asList(typesParam.split(","));
+        List<String> parsed = Arrays.stream(typesParam.split(","))
+                .map(String::trim)
+                .filter(token -> !token.isEmpty())
+                .map(token -> token.toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+        for (String token : parsed) {
+            if (token.length() > MAX_TYPE_TOKEN_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Type filter token too long. Max length: " + MAX_TYPE_TOKEN_LENGTH);
+            }
+        }
+        if (parsed.size() > MAX_TYPES) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Too many type filters. Max allowed: " + MAX_TYPES);
+        }
+        return parsed;
     }
 
     private Map<String, String> parsePropFilters(MultiValueMap<String, String> allParams) {
-        return allParams.entrySet().stream()
-                .filter(e -> e.getKey().startsWith("prop."))
-                .collect(Collectors.toMap(
-                        e -> e.getKey().substring(5),
-                        e -> e.getValue().getFirst()
-                ));
+        Map<String, String> result = new TreeMap<>();
+        for (Map.Entry<String, List<String>> entry : allParams.entrySet()) {
+            String rawKey = entry.getKey();
+            if (!rawKey.startsWith("prop.")) {
+                continue;
+            }
+
+            String key = rawKey.substring(5).trim();
+            if (key.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Property filter key cannot be empty.");
+            }
+            if (key.length() > MAX_PROP_KEY_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Property filter key too long: " + key);
+            }
+            if (!SAFE_PROP_KEY.matcher(key).matches()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Invalid property filter key: " + key);
+            }
+
+            List<String> values = entry.getValue();
+            if (values == null || values.size() != 1 || values.getFirst() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Property filter '" + key + "' must have exactly one non-null value.");
+            }
+
+            String value = values.getFirst();
+            if (value.length() > MAX_PROP_VALUE_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Property filter value too long for key: " + key);
+            }
+
+            result.put(key, value);
+            if (result.size() > MAX_PROP_FILTERS) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Too many property filters. Max allowed: " + MAX_PROP_FILTERS);
+            }
+        }
+        return result;
     }
 }

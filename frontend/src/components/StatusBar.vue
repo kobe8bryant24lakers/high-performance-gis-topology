@@ -30,7 +30,6 @@ const degradationLabel = computed(() => {
   switch (performanceStore.degradationLevel) {
     case 'reduced': return 'Reduced Interaction'
     case 'minimal': return 'Minimal Interaction'
-    case 'clusters-only': return 'Clusters Only'
     default: return ''
   }
 })
@@ -72,11 +71,6 @@ const degradationLabel = computed(() => {
 .degradation-badge.minimal {
   background: #45475a;
   color: #fab387;
-}
-
-.degradation-badge.clusters-only {
-  background: #45475a;
-  color: #f38ba8;
 }
 
 .memory-badge {
