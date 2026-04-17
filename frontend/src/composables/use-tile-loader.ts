@@ -8,7 +8,9 @@ import { LruTileCache } from '@/utils/lru-tile-cache'
 import { telemetry } from '@/utils/telemetry'
 
 function lngToTileX(lng: number, zoom: number): number {
-  return Math.floor(((lng + 180) / 360) * Math.pow(2, zoom))
+  const maxLng = 180 - 1e-9
+  const clampedLng = Math.max(-180, Math.min(maxLng, lng))
+  return Math.floor(((clampedLng + 180) / 360) * Math.pow(2, zoom))
 }
 
 function latToTileY(lat: number, zoom: number): number {
@@ -20,22 +22,54 @@ function latToTileY(lat: number, zoom: number): number {
   )
 }
 
+function normalizeLng(lng: number): number {
+  const normalized = ((lng + 180) % 360 + 360) % 360 - 180
+  return normalized === 180 ? -180 : normalized
+}
+
 export function bboxToTiles(bounds: ViewportBounds, zoom: number): TileCoord[] {
   const z = Math.floor(zoom)
   const maxTile = Math.pow(2, z) - 1
 
-  const xMin = Math.max(0, lngToTileX(bounds.west, z))
-  const xMax = Math.min(maxTile, lngToTileX(bounds.east, z))
   const yMin = Math.max(0, latToTileY(bounds.north, z))
   const yMax = Math.min(maxTile, latToTileY(bounds.south, z))
+  if (yMin > yMax) return []
 
   const tiles: TileCoord[] = []
-  for (let x = xMin; x <= xMax; x++) {
-    for (let y = yMin; y <= yMax; y++) {
-      tiles.push({ z, x, y })
+
+  const appendTileRange = (west: number, east: number) => {
+    const xMin = Math.max(0, Math.min(maxTile, lngToTileX(west, z)))
+    const xMax = Math.max(0, Math.min(maxTile, lngToTileX(east, z)))
+    for (let x = xMin; x <= xMax; x++) {
+      for (let y = yMin; y <= yMax; y++) {
+        tiles.push({ z, x, y })
+      }
     }
   }
-  return tiles
+
+  if (bounds.east - bounds.west >= 360) {
+    appendTileRange(-180, 180)
+    return tiles
+  }
+
+  const west = normalizeLng(bounds.west)
+  const east = normalizeLng(bounds.east)
+  if (west <= east) {
+    appendTileRange(west, east)
+  } else {
+    // Bounds crossing the antimeridian split into [west, 180) U [-180, east]
+    appendTileRange(west, 180)
+    appendTileRange(-180, east)
+  }
+
+  // Defensive dedupe in case clamped boundaries overlap at low zoom.
+  const unique = new Set<string>()
+  return tiles.filter((tile) => {
+    const key = `${tile.z}/${tile.x}/${tile.y}`
+    if (unique.has(key)) return false
+    unique.add(key)
+    return true
+  })
 }
 
 export interface TileLoadState {
@@ -82,6 +116,27 @@ export function computeVisibleElementCount(
   return total
 }
 
+function encodeTypeParamToken(token: string): string {
+  return encodeURIComponent(token.trim().toLowerCase())
+}
+
+export function buildFilterQueryString(
+  types: readonly string[],
+  propertyFilters: Readonly<Record<string, string>>,
+): string {
+  const params: string[] = []
+  const normalizedTypes = types
+    .map(encodeTypeParamToken)
+    .filter((token) => token.length > 0)
+  if (normalizedTypes.length > 0) {
+    params.push(`types=${normalizedTypes.join(',')}`)
+  }
+  for (const [key, value] of Object.entries(propertyFilters)) {
+    params.push(`prop.${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+  }
+  return params.length > 0 ? `?${params.join('&')}` : ''
+}
+
 export function useTileLoader() {
   const viewportStore = useViewportStore()
   const topologyStore = useTopologyStore()
@@ -95,14 +150,7 @@ export function useTileLoader() {
 
   /** Build filter query string for tile fetch URLs */
   function filterQueryString(): string {
-    const params: string[] = []
-    if (filterStore.criteria.types.length > 0) {
-      params.push(`types=${filterStore.criteria.types.join(',')}`)
-    }
-    for (const [key, value] of Object.entries(filterStore.criteria.propertyFilters)) {
-      params.push(`prop.${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    }
-    return params.length > 0 ? `?${params.join('&')}` : ''
+    return buildFilterQueryString(filterStore.criteria.types, filterStore.criteria.propertyFilters)
   }
 
   function evictTiles(tileKeys: string[]) {
@@ -212,7 +260,7 @@ export function useTileLoader() {
       state.nextElementRetryAt = 0
       state.elementCount = elemResult.value!.elements.length
     } else if (fetchElements && elemResult.status === 'rejected' && !isAbortError(elemResult.reason)) {
-      recordEndpointFailure(state, 'elements', now)
+      recordEndpointFailure(state, 'elements', Date.now())
     }
 
     const linkOk = fetchLinks
@@ -224,7 +272,7 @@ export function useTileLoader() {
       state.linkRetryCount = 0
       state.nextLinkRetryAt = 0
     } else if (fetchLinks && linkResult.status === 'rejected' && !isAbortError(linkResult.reason)) {
-      recordEndpointFailure(state, 'links', now)
+      recordEndpointFailure(state, 'links', Date.now())
     }
 
     // Cache tiles as soon as we have any successful payload to avoid uncapped hot-loop retries.

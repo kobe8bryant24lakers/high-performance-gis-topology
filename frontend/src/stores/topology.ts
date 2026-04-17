@@ -54,6 +54,16 @@ export const useTopologyStore = defineStore('topology', () => {
       nodeTileRefs.value.get(el.id)!.add(tileKey)
     }
 
+    // Clear previous cluster associations for this tile before applying fresh cluster payload.
+    for (const [clusterId, tiles] of clusterTileRefs.value) {
+      if (!tiles.has(tileKey)) continue
+      tiles.delete(tileKey)
+      if (tiles.size === 0) {
+        clusterTileRefs.value.delete(clusterId)
+        clusters.value.delete(clusterId)
+      }
+    }
+
     // Handle clusters from the response
     for (const cluster of response.clusters) {
       clusters.value.set(cluster.id, cluster)

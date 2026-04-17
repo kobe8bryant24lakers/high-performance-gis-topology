@@ -126,8 +126,14 @@ public class TileService {
      */
     static List<String> effectiveTypes(int z, List<String> clientTypes) {
         Set<String> allowed = allowedTypesForZoom(z);
-        if (clientTypes == null || clientTypes.isEmpty()) return new ArrayList<>(allowed);
-        return clientTypes.stream().filter(allowed::contains).toList();
+        if (clientTypes == null || clientTypes.isEmpty()) {
+            return allowed.stream().sorted().toList();
+        }
+        return clientTypes.stream()
+                .filter(allowed::contains)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     /**

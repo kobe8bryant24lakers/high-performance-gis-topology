@@ -109,6 +109,12 @@ class TileServiceZoomPolicyTest {
     }
 
     @Test
+    void effectiveTypes_isDeterministicAndDeduplicatedForCacheKeyStability() {
+        List<String> result = TileService.effectiveTypes(15, List.of("router", "firewall", "router"));
+        assertThat(result).containsExactly("firewall", "router");
+    }
+
+    @Test
     void getTileElements_invalidTypeToken_rejectedBeforeZoomIntersection() {
         AtomicInteger tileQueryCount = new AtomicInteger();
         NetworkElementMapper elementMapper = stubElementMapper(tileQueryCount, List.of());

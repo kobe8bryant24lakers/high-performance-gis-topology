@@ -41,4 +41,16 @@ describe('useViewportStore', () => {
       expect(tile).toHaveProperty('y')
     }
   })
+
+  it('computes visible tiles when bounds cross the antimeridian', () => {
+    const store = useViewportStore()
+    store.updateViewport({
+      zoom: 2,
+      center: { lng: 180, lat: 0 },
+      bounds: { west: 170, south: -10, east: -170, north: 10 },
+    })
+    const xSet = new Set(store.visibleTiles.map((t) => t.x))
+    expect(xSet.has(0)).toBe(true)
+    expect(xSet.has(3)).toBe(true)
+  })
 })
