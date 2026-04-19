@@ -14,6 +14,7 @@ _proxy_path = pathlib.Path(__file__).parent / "docker-version-proxy.py"
 
 with _mock.patch("socket.socket") as _mock_sock_cls, \
      _mock.patch("os.path.exists", return_value=False), \
+     _mock.patch("os.lstat"), \
      _mock.patch("os.chmod"):
     _mock_sock_cls.return_value.accept.side_effect = OSError("test teardown")
     spec = importlib.util.spec_from_file_location("docker_version_proxy", _proxy_path)

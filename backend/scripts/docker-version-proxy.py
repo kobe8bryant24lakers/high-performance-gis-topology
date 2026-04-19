@@ -12,7 +12,7 @@ Design:
 - Listens on a Unix-domain socket (mode 0600) — no unauthenticated TCP exposure.
   Override the path via DOCKER_PROXY_SOCK; a live socket causes a fast-fail exit.
 """
-import os, sys, socket, threading, re, logging
+import os, stat, sys, socket, threading, re, logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("docker-proxy")
@@ -134,6 +134,12 @@ def handle(client: socket.socket) -> None:
 
 # Clean up stale socket; fail fast if a live proxy already owns the path.
 if os.path.exists(PROXY_SOCK):
+    _st = os.lstat(PROXY_SOCK)
+    if not stat.S_ISSOCK(_st.st_mode):
+        sys.exit(
+            f"[docker-proxy] {PROXY_SOCK} exists and is not a socket; refusing to remove it. "
+            f"Set DOCKER_PROXY_SOCK to use a different path."
+        )
     _probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         _probe.connect(PROXY_SOCK)
@@ -142,8 +148,12 @@ if os.path.exists(PROXY_SOCK):
             f"[docker-proxy] A proxy is already listening on {PROXY_SOCK}. "
             f"Set DOCKER_PROXY_SOCK to use a different path."
         )
-    except OSError:
-        os.unlink(PROXY_SOCK)   # stale socket, safe to remove
+    except OSError as _e:
+        import errno
+        if _e.errno == errno.ECONNREFUSED:
+            os.unlink(PROXY_SOCK)   # stale socket, safe to remove
+        else:
+            sys.exit(f"[docker-proxy] Unexpected error probing {PROXY_SOCK}: {_e}")
 
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 server.bind(PROXY_SOCK)
