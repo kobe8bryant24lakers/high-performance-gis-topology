@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/topology/elements?page=0&size=1 || exit 1"]
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:8080/api/topology/elements?page=0&size=1' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -42,7 +42,7 @@ services:
       - ./backend/src/test/resources/test-data.sql:/test-data.sql:ro
     environment:
       PGPASSWORD: postgres
-    command: psql -h postgres -U postgres -d gis_topology -f /test-data.sql
+    command: psql -h postgres -U postgres -d gis_topology -v ON_ERROR_STOP=1 -f /test-data.sql
 
   frontend:
     build: ./frontend
