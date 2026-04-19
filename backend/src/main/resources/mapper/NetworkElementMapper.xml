@@ -18,11 +18,11 @@
     <select id="findInTile" resultMap="networkElementResultMap">
         SELECT id, type, label, lng, lat, version, updated_at, properties
         FROM network_elements
-        WHERE location && ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+        WHERE location &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
           AND lng &gt;= #{west} AND lng &lt; #{east}
           AND lat &gt; #{south} AND lat &lt;= #{north}
-          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
-          AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
+          AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{propFilter}::text IS NULL OR properties @> #{propFilter}::jsonb)
         ORDER BY id
         LIMIT #{limit}
     </select>
@@ -30,11 +30,11 @@
     <select id="findIdsInTile" resultType="string">
         SELECT id
         FROM network_elements
-        WHERE location && ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+        WHERE location &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
           AND lng &gt;= #{west} AND lng &lt; #{east}
           AND lat &gt; #{south} AND lat &lt;= #{north}
-          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
-          AND (#{propFilter} IS NULL OR properties @> #{propFilter}::jsonb)
+          AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{propFilter}::text IS NULL OR properties @> #{propFilter}::jsonb)
         ORDER BY id
         LIMIT #{limit}
     </select>
@@ -53,7 +53,7 @@
         SELECT id, type, label, lng, lat, version, updated_at, properties
         FROM network_elements
         WHERE (label ILIKE #{query} OR type ILIKE #{query})
-          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
         LIMIT #{limit}
     </select>
 
@@ -61,7 +61,7 @@
         SELECT COUNT(*)
         FROM network_elements
         WHERE (label ILIKE #{query} OR type ILIKE #{query})
-          AND (#{types} IS NULL OR type = ANY(#{types}::text[]))
+          AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
     </select>
 
 </mapper>
