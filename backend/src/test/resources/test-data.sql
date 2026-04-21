@@ -17,6 +17,8 @@
 --   link-0..link-9      : fixed neighbour edges from el-0 (depth 1-3 reachable).
 --   link-10..link-599 999: generated mesh (source ≠ target guaranteed by formula).
 
+BEGIN;
+
 -- ── Clean slate ──────────────────────────────────────────────────────────────
 DELETE FROM topology_links;
 DELETE FROM network_elements;
@@ -106,3 +108,5 @@ SELECT
     '2026-01-01 00:00:00+00'::timestamptz,
     '{}'::jsonb
 FROM generate_series(10, 599999) AS i;
+
+COMMIT;

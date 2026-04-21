@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: gis_topology
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gis_topology"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/gis_topology
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_PROFILES_ACTIVE: local
+      ADMIN_SEED_TOKEN: ${ADMIN_SEED_TOKEN:-dev-seed-token}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  seeder:
+    profiles: [seed]
+    image: postgis/postgis:16-3.4
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./backend/src/test/resources/test-data.sql:/test-data.sql:ro
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    command: psql -h postgres -U postgres -d gis_topology -v ON_ERROR_STOP=1 -f /test-data.sql
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
