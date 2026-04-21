@@ -73,7 +73,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/topology/elements?page=0&size=1 || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -142,10 +142,10 @@ Expected: Vue app loads without errors.
 - [ ] **Step 4: Verify backend has data**
 
 ```bash
-curl -s "http://localhost:8080/api/topology/elements?page=0&size=5" | python3 -m json.tool
+curl -s "http://localhost:8080/api/topology/elements/el-0"
 ```
 
-Expected: JSON response with `content` array containing elements like `el-0`, `el-1`, etc., and `totalElements` near 1000000.
+Expected: `{"id":"el-0","type":"router","label":"router-0","lng":0.005,"lat":51.334,"version":1,"updatedAt":"2026-01-01T00:00Z","properties":{"index":0}}`
 
 - [ ] **Step 5: Verify link count (optional)**
 

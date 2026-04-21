@@ -22,7 +22,7 @@ seeder:
     - ./backend/src/test/resources/test-data.sql:/test-data.sql:ro
   environment:
     PGPASSWORD: postgres
-  command: psql -h postgres -U postgres -d gis_topology -f /test-data.sql
+  command: psql -h postgres -U postgres -d gis_topology -v ON_ERROR_STOP=1 -f /test-data.sql
 ```
 
 ## Key Decisions
@@ -44,5 +44,5 @@ Expected seed time: 2–5 minutes.
 
 1. `docker compose up --build` completes without errors.
 2. Frontend is reachable at `http://localhost:8081`.
-3. Backend API returns elements at `http://localhost:8080/api/topology/elements?page=0&size=10`.
+3. Backend health endpoint returns `{"status":"UP"}` at `http://localhost:8080/actuator/health`.
 4. Database contains ~1M elements and ~600K links after seeder exits.
