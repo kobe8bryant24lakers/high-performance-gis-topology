@@ -1,0 +1,15 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="router-shell" x1="16" y1="18" x2="49" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4DA3FF"/>
+      <stop offset="1" stop-color="#214F79"/>
+    </linearGradient>
+  </defs>
+  <path d="M15 24L21 18H47L51 22.5V42L46.5 46H17L13 41.5V28L15 24Z" fill="url(#router-shell)"/>
+  <path d="M20 20H46.2C48.85 20 51 22.15 51 24.8V40.2C51 42.85 48.85 45 46.2 45H18.8C16.15 45 14 42.85 14 40.2V26C14 22.69 16.69 20 20 20Z" fill="#0F1822" fill-opacity="0.94" stroke="#B9DBFF" stroke-width="1.5"/>
+  <rect x="20" y="27" width="10" height="4" rx="1.5" fill="#67B2FF"/>
+  <rect x="32" y="27" width="12" height="4" rx="1.5" fill="#94CBFF"/>
+  <rect x="20" y="35" width="22" height="3" rx="1.5" fill="#31506E"/>
+  <path d="M45.5 35L48.5 32.5V37.5L45.5 35Z" fill="#9DD9FF"/>
+  <circle cx="47.5" cy="39" r="2" fill="#8BF0C6"/>
+</svg>

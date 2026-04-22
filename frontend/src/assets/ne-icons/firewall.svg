@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="firewall-shell" x1="15" y1="18" x2="49" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F97352"/>
+      <stop offset="1" stop-color="#6B2A24"/>
+    </linearGradient>
+  </defs>
+  <path d="M15 24L21.5 18H46.5L50 22V42L45 46H18L14 41.5V27L15 24Z" fill="url(#firewall-shell)"/>
+  <path d="M20 20H45C47.76 20 50 22.24 50 25V39.5C50 42.54 47.54 45 44.5 45H19.5C16.46 45 14 42.54 14 39.5V26C14 22.69 16.69 20 20 20Z" fill="#170F12" fill-opacity="0.95" stroke="#FFD4CB" stroke-width="1.5"/>
+  <path d="M31.5 24L39 28V35.5C39 39.2 36.15 42.15 32 43C27.85 42.15 25 39.2 25 35.5V28L31.5 24Z" fill="#F97352" fill-opacity="0.92"/>
+  <path d="M31.5 28L33.1 31.2H36.5L33.8 33.3L34.9 36.6L31.5 34.7L28.1 36.6L29.2 33.3L26.5 31.2H29.9L31.5 28Z" fill="#FFE8DE"/>
+  <rect x="18.5" y="27" width="4.5" height="10" rx="1.2" fill="#6F3B35"/>
+  <circle cx="45.5" cy="38.5" r="2" fill="#FFB28C"/>
+</svg>

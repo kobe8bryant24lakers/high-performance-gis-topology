@@ -1,32 +1,14 @@
 import { computed, shallowRef, watch } from 'vue'
-import { ScatterplotLayer, LineLayer, TextLayer } from '@deck.gl/layers'
+import { IconLayer, LineLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { telemetry } from '@/utils/telemetry'
+import { getNeIconSpec } from '@/constants/ne-icons'
 import type { NetworkElement, TopologyLink } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
-
-// Color per element type [R, G, B, A]
-const TYPE_COLORS: Record<string, [number, number, number, number]> = {
-  router:        [74,  222, 128, 220],  // green
-  switch:        [96,  165, 250, 220],  // blue
-  server:        [167, 139, 250, 220],  // purple
-  firewall:      [248, 113, 113, 220],  // red
-  'access-point':[250, 204,  21, 220],  // yellow
-}
-const DEFAULT_COLOR: [number, number, number, number] = [100, 149, 237, 220]
-
-// Unicode label per type
-const TYPE_LABELS: Record<string, string> = {
-  router:         'R',
-  switch:         'S',
-  server:         'Sv',
-  firewall:       'F',
-  'access-point': 'AP',
-}
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
@@ -126,18 +108,36 @@ export function useDeckLayers(
       }),
     )
 
-    // Node circles with type-based colors
+    // Endpoint stubs stay lightweight as circles.
     allLayers.push(
       new ScatterplotLayer({
-        id: 'nodes',
-        data: nodes,
+        id: 'node-stubs',
+        data: nodes.filter((d) => d.isStub),
         getPosition: (d: NodeWithStub) => getNodePosition(d),
-        getRadius: (d: NodeWithStub) => (d.isStub ? 3 : 7),
-        getFillColor: (d: NodeWithStub) => {
-          if (d.isStub) return [150, 150, 150, 100]
-          return TYPE_COLORS[d.type] ?? DEFAULT_COLOR
-        },
+        getRadius: 3,
+        getFillColor: [150, 150, 150, 100],
         radiusUnits: 'pixels' as const,
+        updateTriggers: {
+          getPosition: [viewModeStore.mode, layoutPositions?.()],
+        },
+      }),
+    )
+
+    allLayers.push(
+      new IconLayer<NodeWithStub>({
+        id: 'node-icons',
+        data: nodes.filter((n) => !n.isStub),
+        getPosition: (d: NodeWithStub) => getNodePosition(d),
+        getIcon: (d: NodeWithStub) => ({
+          url: getNeIconSpec(d.type).iconUrl,
+          width: 64,
+          height: 64,
+          anchorY: 32,
+        }),
+        getColor: [255, 255, 255, 255],
+        getSize: degradationLevel === 'minimal' ? 14 : 18,
+        sizeUnits: 'pixels' as const,
+        alphaCutoff: 0.05,
         pickable: pickEnabled,
         onClick: pickEnabled
           ? (info: { object?: NetworkElement; srcEvent?: PointerEvent }) => {
@@ -150,26 +150,9 @@ export function useDeckLayers(
             }
           : undefined,
         updateTriggers: {
-          getFillColor: [selectionStore.selectedIds],
+          getIcon: [nodes],
           getPosition: [viewModeStore.mode, layoutPositions?.()],
-        },
-      }),
-    )
-
-    // Type label layer — only at full fidelity (< 10k nodes)
-    if (degradationLevel === 'full') allLayers.push(
-      new TextLayer({
-        id: 'node-labels',
-        data: nodes.filter((n) => !n.isStub),
-        getPosition: (d: NodeWithStub) => getNodePosition(d),
-        getText: (d: NodeWithStub) => TYPE_LABELS[d.type] ?? d.type.slice(0, 2).toUpperCase(),
-        getSize: 8,
-        getColor: [255, 255, 255, 220],
-        getTextAnchor: 'middle' as const,
-        getAlignmentBaseline: 'center' as const,
-        fontFamily: 'monospace',
-        updateTriggers: {
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
+          getSize: [degradationLevel],
         },
       }),
     )

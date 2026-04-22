@@ -16,9 +16,15 @@
       <span
         v-for="t in filterStore.criteria.types"
         :key="'type-' + t"
-        class="chip"
+        class="chip chip-type"
       >
-        {{ t }}
+        <img
+          :src="getNeIconSpec(t).iconUrl"
+          :alt="getNeIconSpec(t).label"
+          class="chip-icon"
+          data-test="active-type-chip-icon"
+        />
+        {{ getNeIconSpec(t).label }}
         <button class="chip-remove" @click="filterStore.toggleType(t)">&times;</button>
       </span>
       <span
@@ -37,6 +43,7 @@
 import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import SearchInput from '@/components/SearchInput.vue'
+import { getNeIconSpec } from '@/constants/ne-icons'
 import type { NetworkElement } from '@/types/topology'
 
 defineEmits<{
@@ -103,6 +110,15 @@ const filterStore = useFilterStore()
   border-radius: 12px;
   font-size: 12px;
   color: #cdd6f4;
+}
+
+.chip-type {
+  background: #273341;
+}
+
+.chip-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .chip-search {
