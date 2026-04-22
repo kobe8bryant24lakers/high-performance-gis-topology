@@ -3,13 +3,19 @@ package com.topology.gis;
 import com.topology.gis.tile.dto.TileElementsResponse;
 import com.topology.gis.tile.dto.TileLinksResponse;
 import com.topology.gis.admin.SeedService;
+import com.topology.gis.shared.entity.NetworkElement;
+import com.topology.gis.shared.entity.TopologyLink;
 import com.topology.gis.shared.mapper.NetworkElementMapper;
+import com.topology.gis.shared.mapper.TopologyLinkMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -21,6 +27,8 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     private SeedService seedService;
     @Autowired
     private NetworkElementMapper elementMapper;
+    @Autowired
+    private TopologyLinkMapper linkMapper;
 
     @BeforeEach
     void setUp() {
@@ -106,5 +114,55 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
                 "/api/topology/tiles/14/8192/5460/elements?types=" + longType, String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void tileLinks_includesLinksToHiddenEndpointTypesAsStubs() {
+        linkMapper.delete(null);
+        elementMapper.delete(null);
+
+        OffsetDateTime now = OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
+
+        NetworkElement visibleFirewall = new NetworkElement();
+        visibleFirewall.setId("visible-fw");
+        visibleFirewall.setType("firewall");
+        visibleFirewall.setLabel("visible-fw");
+        visibleFirewall.setLng(0.5);
+        visibleFirewall.setLat(51.1);
+        visibleFirewall.setVersion(1);
+        visibleFirewall.setUpdatedAt(now);
+        visibleFirewall.setProperties(Map.of());
+        elementMapper.insert(visibleFirewall);
+
+        NetworkElement hiddenSwitch = new NetworkElement();
+        hiddenSwitch.setId("hidden-sw");
+        hiddenSwitch.setType("switch");
+        hiddenSwitch.setLabel("hidden-sw");
+        hiddenSwitch.setLng(2.2);
+        hiddenSwitch.setLat(51.1);
+        hiddenSwitch.setVersion(1);
+        hiddenSwitch.setUpdatedAt(now);
+        hiddenSwitch.setProperties(Map.of());
+        elementMapper.insert(hiddenSwitch);
+
+        TopologyLink crossTypeLink = new TopologyLink();
+        crossTypeLink.setId("cross-type-link");
+        crossTypeLink.setType("connection");
+        crossTypeLink.setSourceId("visible-fw");
+        crossTypeLink.setTargetId("hidden-sw");
+        crossTypeLink.setDirected(false);
+        crossTypeLink.setVersion(1);
+        crossTypeLink.setUpdatedAt(now);
+        crossTypeLink.setProperties(Map.of());
+        linkMapper.insert(crossTypeLink);
+
+        ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
+                "/api/topology/tiles/8/128/85/links", TileLinksResponse.class);
+
+        assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
+        TileLinksResponse body = resp.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.links().stream().map(link -> link.id())).contains("cross-type-link");
+        assertThat(body.stubs().stream().map(stub -> stub.id())).contains("hidden-sw");
     }
 }

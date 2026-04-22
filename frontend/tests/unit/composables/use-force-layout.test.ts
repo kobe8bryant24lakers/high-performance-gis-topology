@@ -2,7 +2,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
-import { extractLayoutInput } from '@/composables/use-force-layout'
+import {
+  computeSchematicViewState,
+  extractLayoutInput,
+  projectNodeToSchematicPosition,
+  projectNodesToSchematicPositions,
+} from '@/composables/use-force-layout'
 
 describe('extractLayoutInput', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -60,5 +65,41 @@ describe('extractLayoutInput', () => {
     const input = extractLayoutInput(store)
     expect(input.nodes).toEqual([])
     expect(input.edges).toEqual([])
+  })
+
+  it('projects large node sets into distinct schematic positions without collapsing to origin', () => {
+    const positions = projectNodesToSchematicPositions([
+      { id: 'west', x: -120, y: 40 },
+      { id: 'east', x: 120, y: -35 },
+      { id: 'center', x: 0, y: 0 },
+    ])
+
+    expect(positions).toHaveLength(3)
+    expect(positions.find((p) => p.id === 'west')).toEqual(
+      expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+    )
+    expect(positions.find((p) => p.id === 'east')?.x).toBeGreaterThan(positions.find((p) => p.id === 'west')!.x)
+    expect(positions.find((p) => p.id === 'west')).not.toEqual({ id: 'west', x: 0, y: 0 })
+    expect(new Set(positions.map((p) => `${p.x}:${p.y}`)).size).toBe(3)
+  })
+
+  it('projects a single node to a stable non-origin schematic fallback position', () => {
+    const projected = projectNodeToSchematicPosition(-90, 45)
+    expect(projected.x).toBe(-450)
+    expect(projected.y).toBeCloseTo(-264.54675, 4)
+  })
+
+  it('computes a centered schematic view state that fits projected positions', () => {
+    const viewState = computeSchematicViewState(
+      [
+        { id: 'a', x: -900, y: -500 },
+        { id: 'b', x: 900, y: 500 },
+      ],
+      1200,
+      800,
+    )
+
+    expect(viewState.target).toEqual([0, 0, 0])
+    expect(viewState.zoom).toBeLessThan(0)
   })
 })

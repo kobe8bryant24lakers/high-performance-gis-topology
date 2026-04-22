@@ -327,8 +327,6 @@ export function useTileLoader() {
   function loadVisibleTiles() {
     if (!viewportStore.bounds) return
 
-    tileService.cancelAll()
-
     const tiles = viewportStore.visibleTiles
 
     // Don't eagerly evict offscreen tiles — let LRU/budget pressure handle it.

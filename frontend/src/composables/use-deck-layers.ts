@@ -7,6 +7,7 @@ import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { telemetry } from '@/utils/telemetry'
 import { getNeIconSpec } from '@/constants/ne-icons'
+import { projectNodeToSchematicPosition } from '@/composables/use-force-layout'
 import type { NetworkElement, TopologyLink } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
 
@@ -55,7 +56,8 @@ export function useDeckLayers(
     if (viewModeStore.isSchematic && layoutPositions) {
       const pos = layoutPositions().get(node.id)
       if (pos) return [pos.x, pos.y]
-      return [0, 0]
+      const projected = projectNodeToSchematicPosition(node.lng, node.lat)
+      return [projected.x, projected.y]
     }
     return [node.lng, node.lat]
   }

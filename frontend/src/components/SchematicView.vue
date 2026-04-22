@@ -9,7 +9,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Deck, OrthographicView } from '@deck.gl/core'
 import { useSelectionStore } from '@/stores/selection'
-import { useForceLayout } from '@/composables/use-force-layout'
+import { computeSchematicViewState, useForceLayout } from '@/composables/use-force-layout'
 import { useDeckLayers } from '@/composables/use-deck-layers'
 import type { NetworkElement } from '@/types/topology'
 
@@ -140,6 +140,16 @@ onMounted(() => {
   watch(layers, (newLayers) => {
     deck?.setProps({ layers: newLayers })
   })
+
+  watch(positions, (nextPositions) => {
+    if (!deck || !canvasRef.value || nextPositions.size === 0) return
+    const viewState = computeSchematicViewState(
+      [...nextPositions.values()],
+      canvasRef.value.clientWidth,
+      canvasRef.value.clientHeight,
+    )
+    deck.setProps({ viewState: { ortho: viewState } as any })
+  }, { deep: true })
 })
 
 onUnmounted(() => {
