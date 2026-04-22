@@ -1,5 +1,5 @@
 import { computed, shallowRef, watch } from 'vue'
-import { ScatterplotLayer, LineLayer } from '@deck.gl/layers'
+import { ScatterplotLayer, LineLayer, TextLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useViewModeStore } from '@/stores/view-mode'
@@ -8,6 +8,25 @@ import { usePerformanceStore } from '@/stores/performance'
 import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement, TopologyLink } from '@/types/topology'
 import type { LayoutPosition } from '@/workers/layout-worker'
+
+// Color per element type [R, G, B, A]
+const TYPE_COLORS: Record<string, [number, number, number, number]> = {
+  router:        [74,  222, 128, 220],  // green
+  switch:        [96,  165, 250, 220],  // blue
+  server:        [167, 139, 250, 220],  // purple
+  firewall:      [248, 113, 113, 220],  // red
+  'access-point':[250, 204,  21, 220],  // yellow
+}
+const DEFAULT_COLOR: [number, number, number, number] = [100, 149, 237, 220]
+
+// Unicode label per type
+const TYPE_LABELS: Record<string, string> = {
+  router:         'R',
+  switch:         'S',
+  server:         'Sv',
+  firewall:       'F',
+  'access-point': 'AP',
+}
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
@@ -23,11 +42,9 @@ export function useDeckLayers(
   const filterStore = useFilterStore()
   const performanceStore = usePerformanceStore()
 
-  // Cache collected data to avoid rebuilding on every selection/position change
   const cachedNodes = shallowRef<NodeWithStub[]>([])
   const cachedEdges = shallowRef<EdgeData[]>([])
 
-  // Rebuild node/edge arrays only when graph or filters change
   watch(
     () => [topologyStore.nodeCount, topologyStore.edgeCount, JSON.stringify(filterStore.criteria.types), JSON.stringify(filterStore.criteria.propertyFilters)],
     () => {
@@ -56,7 +73,6 @@ export function useDeckLayers(
     if (viewModeStore.isSchematic && layoutPositions) {
       const pos = layoutPositions().get(node.id)
       if (pos) return [pos.x, pos.y]
-      // No layout position yet — place at origin rather than mixing geo coords
       return [0, 0]
     }
     return [node.lng, node.lat]
@@ -67,7 +83,7 @@ export function useDeckLayers(
     const allLayers: any[] = []
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
-    const { hoverEnabled, pickEnabled } = performanceStore
+    const { hoverEnabled, pickEnabled, degradationLevel } = performanceStore
 
     // Link layer
     allLayers.push(
@@ -77,10 +93,10 @@ export function useDeckLayers(
         getSourcePosition: (d: EdgeData) => getNodePosition(d.source),
         getTargetPosition: (d: EdgeData) => getNodePosition(d.target),
         getColor: (d: EdgeData) => {
-          if (d.source.isStub || d.target.isStub) return [150, 150, 150, 80]
-          return [100, 100, 100, 160]
+          if (d.source.isStub || d.target.isStub) return [100, 116, 139, 90]
+          return [148, 163, 184, 200]
         },
-        getWidth: 1,
+        getWidth: 1.5,
         widthUnits: 'pixels' as const,
         updateTriggers: {
           getSourcePosition: [viewModeStore.mode, layoutPositions?.()],
@@ -89,17 +105,37 @@ export function useDeckLayers(
       }),
     )
 
-    // Node layer
+    // Selection halo — skip at minimal (50k+ nodes, halo draw cost not justified)
+    if (degradationLevel !== 'minimal') allLayers.push(
+      new ScatterplotLayer({
+        id: 'node-halos',
+        data: nodes.filter((n) => !n.isStub && selectionStore.selectedIds.has(n.id)),
+        getPosition: (d: NodeWithStub) => getNodePosition(d),
+        getRadius: 10,
+        getFillColor: [255, 140, 0, 60],
+        getLineColor: [255, 140, 0, 220],
+        getLineWidth: 2,
+        lineWidthUnits: 'pixels' as const,
+        stroked: true,
+        filled: true,
+        radiusUnits: 'pixels' as const,
+        updateTriggers: {
+          data: [selectionStore.selectedIds],
+          getPosition: [viewModeStore.mode, layoutPositions?.()],
+        },
+      }),
+    )
+
+    // Node circles with type-based colors
     allLayers.push(
       new ScatterplotLayer({
         id: 'nodes',
         data: nodes,
         getPosition: (d: NodeWithStub) => getNodePosition(d),
-        getRadius: (d: NodeWithStub) => (d.isStub ? 3 : 6),
+        getRadius: (d: NodeWithStub) => (d.isStub ? 3 : 7),
         getFillColor: (d: NodeWithStub) => {
           if (d.isStub) return [150, 150, 150, 100]
-          if (selectionStore.selectedIds.has(d.id)) return [255, 140, 0, 255]
-          return [0, 128, 255, 200]
+          return TYPE_COLORS[d.type] ?? DEFAULT_COLOR
         },
         radiusUnits: 'pixels' as const,
         pickable: pickEnabled,
@@ -115,6 +151,24 @@ export function useDeckLayers(
           : undefined,
         updateTriggers: {
           getFillColor: [selectionStore.selectedIds],
+          getPosition: [viewModeStore.mode, layoutPositions?.()],
+        },
+      }),
+    )
+
+    // Type label layer — only at full fidelity (< 10k nodes)
+    if (degradationLevel === 'full') allLayers.push(
+      new TextLayer({
+        id: 'node-labels',
+        data: nodes.filter((n) => !n.isStub),
+        getPosition: (d: NodeWithStub) => getNodePosition(d),
+        getText: (d: NodeWithStub) => TYPE_LABELS[d.type] ?? d.type.slice(0, 2).toUpperCase(),
+        getSize: 8,
+        getColor: [255, 255, 255, 220],
+        getTextAnchor: 'middle' as const,
+        getAlignmentBaseline: 'center' as const,
+        fontFamily: 'monospace',
+        updateTriggers: {
           getPosition: [viewModeStore.mode, layoutPositions?.()],
         },
       }),

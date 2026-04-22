@@ -46,7 +46,10 @@ services:
     command: psql -h postgres -U postgres -d gis_topology -v ON_ERROR_STOP=1 -f /test-data.sql
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN}
     ports:
       - "127.0.0.1:8081:80"
     depends_on:

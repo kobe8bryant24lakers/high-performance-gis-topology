@@ -20,8 +20,8 @@ export const useTopologyStore = defineStore('topology', () => {
   /** Nodes that were pinned at eviction time and have zero tile refs — deferred for cleanup */
   const deferredEvictNodeIds = ref(new Set<string>())
 
-  const nodeCount = computed(() => graph.value.order)
-  const edgeCount = computed(() => graph.value.size)
+  const nodeCount = ref(0)
+  const edgeCount = ref(0)
   const clusterCount = computed(() => clusters.value.size)
 
   function mergeTileElements(tileKey: string, response: TileElementsResponse): boolean {
@@ -72,6 +72,8 @@ export const useTopologyStore = defineStore('topology', () => {
       }
       clusterTileRefs.value.get(cluster.id)!.add(tileKey)
     }
+    nodeCount.value = graph.value.order
+    edgeCount.value = graph.value.size
     return true
   }
 
@@ -137,6 +139,8 @@ export const useTopologyStore = defineStore('topology', () => {
       }
       edgeTileRefs.value.get(link.id)!.add(tileKey)
     }
+    nodeCount.value = graph.value.order
+    edgeCount.value = graph.value.size
   }
 
   function evictTile(tileKey: string, pinnedNodeIds?: Set<string>) {
@@ -175,6 +179,8 @@ export const useTopologyStore = defineStore('topology', () => {
         clusterTileRefs.value.delete(clusterId)
       }
     }
+    nodeCount.value = graph.value.order
+    edgeCount.value = graph.value.size
   }
 
   function getElement(id: string): NetworkElement | null {
@@ -209,6 +215,8 @@ export const useTopologyStore = defineStore('topology', () => {
       }
       nodeTileRefs.value.delete(nodeId)
     }
+    nodeCount.value = graph.value.order
+    edgeCount.value = graph.value.size
   }
 
   function clear() {
@@ -219,6 +227,8 @@ export const useTopologyStore = defineStore('topology', () => {
     clusters.value.clear()
     clusterTileRefs.value.clear()
     deferredEvictNodeIds.value.clear()
+    nodeCount.value = 0
+    edgeCount.value = 0
   }
 
   return {
