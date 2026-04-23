@@ -49,6 +49,16 @@ function handleHover(id: string | null) {
 
 const { layers } = useDeckLayers(handleClick, handleHover, () => positions.value)
 
+function fitToPositions(nextPositions = positions.value): void {
+  if (!deck || !canvasRef.value || nextPositions.size === 0) return
+  const viewState = computeSchematicViewState(
+    [...nextPositions.values()],
+    canvasRef.value.clientWidth,
+    canvasRef.value.clientHeight,
+  )
+  deck.setProps({ viewState: viewState as any })
+}
+
 function handleDragStart(info: Record<string, unknown>): boolean {
   const obj = info.object as NetworkElement | undefined
   if (obj?.id) {
@@ -135,21 +145,13 @@ onMounted(() => {
     onDragEnd: handleDragEnd as any,
   })
 
-  runLayout()
-
   watch(layers, (newLayers) => {
     deck?.setProps({ layers: newLayers })
   })
 
-  watch(positions, (nextPositions) => {
-    if (!deck || !canvasRef.value || nextPositions.size === 0) return
-    const viewState = computeSchematicViewState(
-      [...nextPositions.values()],
-      canvasRef.value.clientWidth,
-      canvasRef.value.clientHeight,
-    )
-    deck.setProps({ viewState: { ortho: viewState } as any })
-  }, { deep: true })
+  watch(positions, fitToPositions, { deep: true, immediate: true })
+  runLayout()
+  requestAnimationFrame(() => fitToPositions())
 })
 
 onUnmounted(() => {

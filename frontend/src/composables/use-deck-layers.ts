@@ -14,6 +14,24 @@ import type { LayoutPosition } from '@/workers/layout-worker'
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
 
+const SCHEMATIC_REDUCED_NODE_LIMIT = 6_000
+const SCHEMATIC_MINIMAL_NODE_LIMIT = 2_500
+const SCHEMATIC_REDUCED_EDGE_LIMIT = 6_000
+const SCHEMATIC_MINIMAL_EDGE_LIMIT = 2_000
+const SCHEMATIC_STUB_LIMIT = 1_000
+
+function sampleEvenly<T>(items: T[], limit: number): T[] {
+  if (items.length <= limit) return items
+  if (limit <= 0) return []
+
+  const sampled: T[] = []
+  const stride = items.length / limit
+  for (let i = 0; i < limit; i++) {
+    sampled.push(items[Math.floor(i * stride)]!)
+  }
+  return sampled
+}
+
 export function useDeckLayers(
   onElementClick: (id: string, event?: PointerEvent) => void,
   onElementHover: (id: string | null) => void,
@@ -68,23 +86,40 @@ export function useDeckLayers(
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
     const { hoverEnabled, pickEnabled, degradationLevel } = performanceStore
+    const isDenseSchematic = viewModeStore.isSchematic && degradationLevel !== 'full'
+    const schematicNodeLimit = degradationLevel === 'minimal'
+      ? SCHEMATIC_MINIMAL_NODE_LIMIT
+      : SCHEMATIC_REDUCED_NODE_LIMIT
+    const schematicEdgeLimit = degradationLevel === 'minimal'
+      ? SCHEMATIC_MINIMAL_EDGE_LIMIT
+      : SCHEMATIC_REDUCED_EDGE_LIMIT
+    const visibleRealNodes = isDenseSchematic
+      ? sampleEvenly(nodes.filter((n) => !n.isStub), schematicNodeLimit)
+      : nodes.filter((n) => !n.isStub)
+    const visibleStubNodes = isDenseSchematic
+      ? sampleEvenly(nodes.filter((n) => n.isStub), SCHEMATIC_STUB_LIMIT)
+      : nodes.filter((n) => n.isStub)
+    const visibleEdges = isDenseSchematic ? sampleEvenly(edges, schematicEdgeLimit) : edges
 
     // Link layer
     allLayers.push(
       new LineLayer({
         id: 'links',
-        data: edges,
+        data: visibleEdges,
         getSourcePosition: (d: EdgeData) => getNodePosition(d.source),
         getTargetPosition: (d: EdgeData) => getNodePosition(d.target),
         getColor: (d: EdgeData) => {
+          if (isDenseSchematic) return [148, 163, 184, 45]
           if (d.source.isStub || d.target.isStub) return [100, 116, 139, 90]
           return [148, 163, 184, 200]
         },
-        getWidth: 1.5,
+        getWidth: isDenseSchematic ? 0.75 : 1.5,
         widthUnits: 'pixels' as const,
         updateTriggers: {
           getSourcePosition: [viewModeStore.mode, layoutPositions?.()],
           getTargetPosition: [viewModeStore.mode, layoutPositions?.()],
+          getColor: [isDenseSchematic],
+          getWidth: [isDenseSchematic],
         },
       }),
     )
@@ -114,7 +149,7 @@ export function useDeckLayers(
     allLayers.push(
       new ScatterplotLayer({
         id: 'node-stubs',
-        data: nodes.filter((d) => d.isStub),
+        data: visibleStubNodes,
         getPosition: (d: NodeWithStub) => getNodePosition(d),
         getRadius: 3,
         getFillColor: [150, 150, 150, 100],
@@ -128,7 +163,7 @@ export function useDeckLayers(
     allLayers.push(
       new IconLayer<NodeWithStub>({
         id: 'node-icons',
-        data: nodes.filter((n) => !n.isStub),
+        data: visibleRealNodes,
         getPosition: (d: NodeWithStub) => getNodePosition(d),
         getIcon: (d: NodeWithStub) => ({
           url: getNeIconSpec(d.type).iconUrl,
@@ -137,7 +172,7 @@ export function useDeckLayers(
           anchorY: 32,
         }),
         getColor: [255, 255, 255, 255],
-        getSize: degradationLevel === 'minimal' ? 14 : 18,
+        getSize: isDenseSchematic ? 22 : degradationLevel === 'minimal' ? 14 : 18,
         sizeUnits: 'pixels' as const,
         alphaCutoff: 0.05,
         pickable: pickEnabled,
