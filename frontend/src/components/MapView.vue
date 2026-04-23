@@ -92,6 +92,9 @@ onMounted(() => {
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [viewportStore.center.lng, viewportStore.center.lat],
     zoom: viewportStore.zoom,
+    projection: 'mercator',
+    pitch: 0,
+    bearing: 0,
   })
 
   overlay = new MapboxOverlay({
