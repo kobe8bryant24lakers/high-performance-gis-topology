@@ -82,7 +82,7 @@ describe('useDeckLayers', () => {
     const linkLayer = layers.value.find((layer) => layer.id === 'links')
 
     expect(iconLayer?.props.data).toHaveLength(2_500)
-    expect(linkLayer?.props.data).toHaveLength(2_000)
+    expect(linkLayer?.props.data).toHaveLength(0)
     expect(linkLayer?.props.getWidth).toBe(0.75)
   })
 })

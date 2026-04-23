@@ -16,8 +16,6 @@ interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyL
 
 const SCHEMATIC_REDUCED_NODE_LIMIT = 6_000
 const SCHEMATIC_MINIMAL_NODE_LIMIT = 2_500
-const SCHEMATIC_REDUCED_EDGE_LIMIT = 6_000
-const SCHEMATIC_MINIMAL_EDGE_LIMIT = 2_000
 const SCHEMATIC_STUB_LIMIT = 1_000
 
 function sampleEvenly<T>(items: T[], limit: number): T[] {
@@ -90,16 +88,13 @@ export function useDeckLayers(
     const schematicNodeLimit = degradationLevel === 'minimal'
       ? SCHEMATIC_MINIMAL_NODE_LIMIT
       : SCHEMATIC_REDUCED_NODE_LIMIT
-    const schematicEdgeLimit = degradationLevel === 'minimal'
-      ? SCHEMATIC_MINIMAL_EDGE_LIMIT
-      : SCHEMATIC_REDUCED_EDGE_LIMIT
     const visibleRealNodes = isDenseSchematic
       ? sampleEvenly(nodes.filter((n) => !n.isStub), schematicNodeLimit)
       : nodes.filter((n) => !n.isStub)
     const visibleStubNodes = isDenseSchematic
       ? sampleEvenly(nodes.filter((n) => n.isStub), SCHEMATIC_STUB_LIMIT)
       : nodes.filter((n) => n.isStub)
-    const visibleEdges = isDenseSchematic ? sampleEvenly(edges, schematicEdgeLimit) : edges
+    const visibleEdges = isDenseSchematic ? [] : edges
 
     // Link layer
     allLayers.push(
@@ -109,7 +104,7 @@ export function useDeckLayers(
         getSourcePosition: (d: EdgeData) => getNodePosition(d.source),
         getTargetPosition: (d: EdgeData) => getNodePosition(d.target),
         getColor: (d: EdgeData) => {
-          if (isDenseSchematic) return [148, 163, 184, 45]
+          if (isDenseSchematic) return [148, 163, 184, 28]
           if (d.source.isStub || d.target.isStub) return [100, 116, 139, 90]
           return [148, 163, 184, 200]
         },
