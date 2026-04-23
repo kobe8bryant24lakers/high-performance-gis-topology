@@ -35,6 +35,12 @@ describe('useDeckLayers', () => {
     expect(layerIds).toContain('node-icons')
     expect(layerIds).not.toContain('nodes')
     expect(layerIds).not.toContain('node-labels')
+
+    const iconLayer = layers.value.find((layer) => layer.id === 'node-icons')
+    const icon = iconLayer?.props.getIcon(topologyStore.getElement('el-1'))
+    expect(icon.url).toMatch(/^data:image\/svg\+xml,/)
+    expect(icon.mask).toBe(false)
+    expect(iconLayer?.props.getSize).toBe(22)
   })
 
   it('keeps dense map layers complete after removing the alternate layout mode', () => {
