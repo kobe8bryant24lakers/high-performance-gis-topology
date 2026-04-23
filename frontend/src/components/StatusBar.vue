@@ -1,6 +1,6 @@
 <template>
   <footer class="status-bar">
-    <span class="view-badge">{{ viewModeStore.isSchematic ? 'Schematic' : 'Map' }}</span>
+    <span class="view-badge">Map</span>
     <span>Elements: {{ topologyStore.nodeCount }}</span>
     <span>Links: {{ topologyStore.edgeCount }}</span>
     <span v-if="topologyStore.clusterCount > 0">Clusters: {{ topologyStore.clusterCount }}</span>
@@ -18,12 +18,10 @@
 import { computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { useViewportStore } from '@/stores/viewport'
-import { useViewModeStore } from '@/stores/view-mode'
 import { usePerformanceStore } from '@/stores/performance'
 
 const topologyStore = useTopologyStore()
 const viewportStore = useViewportStore()
-const viewModeStore = useViewModeStore()
 const performanceStore = usePerformanceStore()
 
 const degradationLabel = computed(() => {

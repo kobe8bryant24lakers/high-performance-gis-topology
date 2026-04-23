@@ -2,42 +2,21 @@ import { computed, shallowRef, watch } from 'vue'
 import { IconLayer, LineLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
-import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { telemetry } from '@/utils/telemetry'
 import { getNeIconSpec } from '@/constants/ne-icons'
-import { projectNodeToSchematicPosition } from '@/composables/use-force-layout'
 import type { NetworkElement, TopologyLink } from '@/types/topology'
-import type { LayoutPosition } from '@/workers/layout-worker'
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
 
-const SCHEMATIC_REDUCED_NODE_LIMIT = 6_000
-const SCHEMATIC_MINIMAL_NODE_LIMIT = 2_500
-const SCHEMATIC_STUB_LIMIT = 1_000
-
-function sampleEvenly<T>(items: T[], limit: number): T[] {
-  if (items.length <= limit) return items
-  if (limit <= 0) return []
-
-  const sampled: T[] = []
-  const stride = items.length / limit
-  for (let i = 0; i < limit; i++) {
-    sampled.push(items[Math.floor(i * stride)]!)
-  }
-  return sampled
-}
-
 export function useDeckLayers(
   onElementClick: (id: string, event?: PointerEvent) => void,
   onElementHover: (id: string | null) => void,
-  layoutPositions?: () => Map<string, LayoutPosition>,
 ) {
   const topologyStore = useTopologyStore()
   const selectionStore = useSelectionStore()
-  const viewModeStore = useViewModeStore()
   const filterStore = useFilterStore()
   const performanceStore = usePerformanceStore()
 
@@ -69,12 +48,6 @@ export function useDeckLayers(
   )
 
   function getNodePosition(node: NodeWithStub): [number, number] {
-    if (viewModeStore.isSchematic && layoutPositions) {
-      const pos = layoutPositions().get(node.id)
-      if (pos) return [pos.x, pos.y]
-      const projected = projectNodeToSchematicPosition(node.lng, node.lat)
-      return [projected.x, projected.y]
-    }
     return [node.lng, node.lat]
   }
 
@@ -84,17 +57,9 @@ export function useDeckLayers(
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
     const { hoverEnabled, pickEnabled, degradationLevel } = performanceStore
-    const isDenseSchematic = viewModeStore.isSchematic && degradationLevel !== 'full'
-    const schematicNodeLimit = degradationLevel === 'minimal'
-      ? SCHEMATIC_MINIMAL_NODE_LIMIT
-      : SCHEMATIC_REDUCED_NODE_LIMIT
-    const visibleRealNodes = isDenseSchematic
-      ? sampleEvenly(nodes.filter((n) => !n.isStub), schematicNodeLimit)
-      : nodes.filter((n) => !n.isStub)
-    const visibleStubNodes = isDenseSchematic
-      ? sampleEvenly(nodes.filter((n) => n.isStub), SCHEMATIC_STUB_LIMIT)
-      : nodes.filter((n) => n.isStub)
-    const visibleEdges = isDenseSchematic ? [] : edges
+    const visibleRealNodes = nodes.filter((n) => !n.isStub)
+    const visibleStubNodes = nodes.filter((n) => n.isStub)
+    const visibleEdges = edges
 
     // Link layer
     allLayers.push(
@@ -104,18 +69,11 @@ export function useDeckLayers(
         getSourcePosition: (d: EdgeData) => getNodePosition(d.source),
         getTargetPosition: (d: EdgeData) => getNodePosition(d.target),
         getColor: (d: EdgeData) => {
-          if (isDenseSchematic) return [148, 163, 184, 28]
           if (d.source.isStub || d.target.isStub) return [100, 116, 139, 90]
           return [148, 163, 184, 200]
         },
-        getWidth: isDenseSchematic ? 0.75 : 1.5,
+        getWidth: 1.5,
         widthUnits: 'pixels' as const,
-        updateTriggers: {
-          getSourcePosition: [viewModeStore.mode, layoutPositions?.()],
-          getTargetPosition: [viewModeStore.mode, layoutPositions?.()],
-          getColor: [isDenseSchematic],
-          getWidth: [isDenseSchematic],
-        },
       }),
     )
 
@@ -135,7 +93,6 @@ export function useDeckLayers(
         radiusUnits: 'pixels' as const,
         updateTriggers: {
           data: [selectionStore.selectedIds],
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
         },
       }),
     )
@@ -149,9 +106,6 @@ export function useDeckLayers(
         getRadius: 3,
         getFillColor: [150, 150, 150, 100],
         radiusUnits: 'pixels' as const,
-        updateTriggers: {
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
-        },
       }),
     )
 
@@ -167,7 +121,7 @@ export function useDeckLayers(
           anchorY: 32,
         }),
         getColor: [255, 255, 255, 255],
-        getSize: isDenseSchematic ? 22 : degradationLevel === 'minimal' ? 14 : 18,
+        getSize: degradationLevel === 'minimal' ? 14 : 18,
         sizeUnits: 'pixels' as const,
         alphaCutoff: 0.05,
         pickable: pickEnabled,
@@ -183,7 +137,6 @@ export function useDeckLayers(
           : undefined,
         updateTriggers: {
           getIcon: [nodes],
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
           getSize: [degradationLevel],
         },
       }),

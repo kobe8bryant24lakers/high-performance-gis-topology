@@ -3,9 +3,6 @@
     <div class="toolbar-title">GIS Topology Viewer</div>
     <div class="toolbar-controls">
       <SearchInput @select-result="$emit('flyTo', $event)" />
-      <button class="view-toggle" @click="viewModeStore.toggle()">
-        {{ viewModeStore.isSchematic ? 'Map' : 'Schematic' }}
-      </button>
     </div>
     <div class="toolbar-spacer" />
     <div v-if="filterStore.hasActiveFilters" class="filter-chips">
@@ -40,7 +37,6 @@
 </template>
 
 <script setup lang="ts">
-import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import SearchInput from '@/components/SearchInput.vue'
 import { getNeIconSpec } from '@/constants/ne-icons'
@@ -50,7 +46,6 @@ defineEmits<{
   flyTo: [element: NetworkElement]
 }>()
 
-const viewModeStore = useViewModeStore()
 const filterStore = useFilterStore()
 </script>
 
@@ -76,20 +71,6 @@ const filterStore = useFilterStore()
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.view-toggle {
-  padding: 4px 12px;
-  border: 1px solid #45475a;
-  border-radius: 4px;
-  background: #1e1e2e;
-  color: #cdd6f4;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.view-toggle:hover {
-  background: #313244;
 }
 
 .toolbar-spacer {

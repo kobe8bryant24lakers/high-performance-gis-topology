@@ -4,13 +4,7 @@
     <div class="main-area">
       <SidePanel @fly-to="onFlyTo" />
       <MapView
-        v-show="!viewModeStore.isSchematic"
         ref="mapViewRef"
-        @element-click="onElementClick"
-        @element-hover="onElementHover"
-      />
-      <SchematicView
-        v-show="viewModeStore.isSchematic"
         @element-click="onElementClick"
         @element-hover="onElementHover"
       />
@@ -28,18 +22,15 @@
 import { ref } from 'vue'
 import TopToolbar from '@/components/TopToolbar.vue'
 import MapView from '@/components/MapView.vue'
-import SchematicView from '@/components/SchematicView.vue'
 import SidePanel from '@/components/SidePanel.vue'
 import StatusBar from '@/components/StatusBar.vue'
 import KeyboardHelpOverlay from '@/components/KeyboardHelpOverlay.vue'
-import { useViewModeStore } from '@/stores/view-mode'
 import { useSelectionStore } from '@/stores/selection'
 import { useExplorationStore } from '@/stores/exploration'
 import { useKeyboardShortcuts } from '@/composables/use-keyboard-shortcuts'
 import { telemetry } from '@/utils/telemetry'
 import type { NetworkElement } from '@/types/topology'
 
-const viewModeStore = useViewModeStore()
 const selectionStore = useSelectionStore()
 const explorationStore = useExplorationStore()
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
@@ -60,11 +51,6 @@ const { showHelp, registry } = useKeyboardShortcuts([
       const input = document.querySelector<HTMLInputElement>('.search-input input')
       input?.focus()
     },
-  },
-  {
-    key: 'Tab',
-    label: 'Toggle geo/schematic view',
-    handler: () => viewModeStore.toggle(),
   },
   {
     key: '?',
@@ -95,9 +81,6 @@ function onElementHover(id: string | null) {
 
 function onFlyTo(element: NetworkElement) {
   telemetry.emit('fly_to', 1)
-  if (viewModeStore.isSchematic) {
-    viewModeStore.setMode('geo')
-  }
   setTimeout(() => {
     mapViewRef.value?.flyTo(element.lng, element.lat)
   }, 50)

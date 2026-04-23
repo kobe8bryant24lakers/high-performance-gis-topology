@@ -3,9 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
 import { usePerformanceStore } from '@/stores/performance'
 import { LruTileCache } from '@/utils/lru-tile-cache'
-import { computeLayout } from '@/workers/layout-worker'
 import type { NetworkElement, TopologyLink } from '@/types/topology'
-import type { LayoutInput } from '@/workers/layout-worker'
 
 function makeElements(count: number): NetworkElement[] {
   const elements: NetworkElement[] = []
@@ -90,29 +88,6 @@ describe('Performance Budgets', () => {
     const elapsed = performance.now() - start
     expect(cache.size).toBeLessThanOrEqual(200)
     expect(elapsed).toBeLessThan(100)
-  })
-
-  it('Web Worker layout computes 1K nodes in < 5s', () => {
-    const nodes = Array.from({ length: 1000 }, (_, i) => ({
-      id: `n-${i}`,
-      x: Math.random() * 1000,
-      y: Math.random() * 1000,
-    }))
-    const edges = Array.from({ length: 800 }, (_, i) => ({
-      source: `n-${i % 1000}`,
-      target: `n-${(i + 1) % 1000}`,
-    }))
-    const input: LayoutInput = { nodes, edges, iterations: 100 }
-
-    const start = performance.now()
-    const result = computeLayout(input)
-    const elapsed = performance.now() - start
-
-    expect(result.positions).toHaveLength(1000)
-    // O(n²) repulsion algorithm; 1K nodes × 100 iterations runs synchronously and
-    // exhibits high variance across shared CI hardware. 5 000 ms still catches
-    // pathological regressions while matching observed baseline envelopes.
-    expect(elapsed).toBeLessThan(5000)
   })
 
   it('degradation level changes correctly with element count', () => {

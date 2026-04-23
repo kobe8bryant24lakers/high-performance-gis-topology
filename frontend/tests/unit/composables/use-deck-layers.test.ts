@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
-import { usePerformanceStore } from '@/stores/performance'
-import { useViewModeStore } from '@/stores/view-mode'
 import { useDeckLayers } from '@/composables/use-deck-layers'
 
 describe('useDeckLayers', () => {
@@ -39,10 +37,8 @@ describe('useDeckLayers', () => {
     expect(layerIds).not.toContain('node-labels')
   })
 
-  it('samples dense schematic layers so icons stay readable', () => {
+  it('keeps dense map layers complete after removing the alternate layout mode', () => {
     const topologyStore = useTopologyStore()
-    const viewModeStore = useViewModeStore()
-    const performanceStore = usePerformanceStore()
 
     topologyStore.mergeTileElements('z0/x0/y0', {
       elements: Array.from({ length: 5_100 }, (_, index) => ({
@@ -74,15 +70,13 @@ describe('useDeckLayers', () => {
       generation: 1,
       removedLinkIds: [],
     })
-    viewModeStore.setMode('schematic')
-    performanceStore.visibleElementCount = 50_000
 
     const { layers } = useDeckLayers(() => undefined, () => undefined)
     const iconLayer = layers.value.find((layer) => layer.id === 'node-icons')
     const linkLayer = layers.value.find((layer) => layer.id === 'links')
 
-    expect(iconLayer?.props.data).toHaveLength(2_500)
-    expect(linkLayer?.props.data).toHaveLength(0)
-    expect(linkLayer?.props.getWidth).toBe(0.75)
+    expect(iconLayer?.props.data).toHaveLength(5_100)
+    expect(linkLayer?.props.data).toHaveLength(5_099)
+    expect(linkLayer?.props.getWidth).toBe(1.5)
   })
 })
