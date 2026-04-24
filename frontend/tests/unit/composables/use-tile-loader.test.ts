@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import {
   bboxToTiles,
   buildFilterQueryString,
+  computeStaleTileKeys,
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
@@ -64,6 +65,13 @@ describe('bboxToTiles', () => {
 
     const visible = ['2/1/1', '2/1/2', '2/2/1']
     expect(computeVisibleElementCount(visible, tileStates)).toBe(200)
+  })
+
+  it('identifies loaded tiles outside the current viewport', () => {
+    const loaded = ['2/1/1', '2/1/2', '3/4/4']
+    const visible = new Set(['2/1/2'])
+
+    expect(computeStaleTileKeys(loaded, visible)).toEqual(['2/1/1', '3/4/4'])
   })
 
   it('caps tile retry delay with exponential backoff', () => {

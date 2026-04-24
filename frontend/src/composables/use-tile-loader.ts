@@ -118,6 +118,17 @@ export function computeVisibleElementCount(
   return total
 }
 
+export function computeStaleTileKeys(
+  loadedTileKeys: Iterable<string>,
+  visibleTileKeys: ReadonlySet<string>,
+): string[] {
+  const stale: string[] = []
+  for (const key of loadedTileKeys) {
+    if (!visibleTileKeys.has(key)) stale.push(key)
+  }
+  return stale
+}
+
 export function shouldFetchEndpoint(
   loaded: boolean,
   inFlight: boolean,
@@ -168,6 +179,28 @@ export function useTileLoader() {
     for (const key of tileKeys) {
       topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
       tileLoadStates.delete(key)
+    }
+  }
+
+  function visibleTileKeySet(tiles: TileCoord[] = viewportStore.visibleTiles): Set<string> {
+    return new Set(tiles.map(tileKeyFromCoord))
+  }
+
+  function isTileStillVisible(tileKey: string): boolean {
+    return visibleTileKeySet().has(tileKey)
+  }
+
+  function evictStaleTiles(visibleKeys: ReadonlySet<string>) {
+    const cachedStaleKeys = computeStaleTileKeys(tileCache.keys(), visibleKeys)
+    evictTiles(cachedStaleKeys)
+    for (const key of cachedStaleKeys) {
+      tileCache.delete(key)
+    }
+
+    for (const key of computeStaleTileKeys(tileLoadStates.keys(), visibleKeys)) {
+      if (!tileCache.has(key)) {
+        tileLoadStates.delete(key)
+      }
     }
   }
 
@@ -293,6 +326,10 @@ export function useTileLoader() {
       && elemResult.status === 'fulfilled'
       && !!elemResult.value
     if (elemOk && elemResult.status === 'fulfilled') {
+      if (!isTileStillVisible(tileKey)) {
+        tileLoadStates.delete(tileKey)
+        return
+      }
       topologyStore.mergeTileElements(tileKey, elemResult.value!)
       state.elementsLoaded = true
       state.elementRetryCount = 0
@@ -306,6 +343,10 @@ export function useTileLoader() {
       && linkResult.status === 'fulfilled'
       && !!linkResult.value
     if (linkOk && linkResult.status === 'fulfilled') {
+      if (!isTileStillVisible(tileKey)) {
+        tileLoadStates.delete(tileKey)
+        return
+      }
       topologyStore.mergeTileLinks(tileKey, linkResult.value!)
       state.linksLoaded = true
       state.linkRetryCount = 0
@@ -328,9 +369,8 @@ export function useTileLoader() {
     if (!viewportStore.bounds) return
 
     const tiles = viewportStore.visibleTiles
-
-    // Don't eagerly evict offscreen tiles — let LRU/budget pressure handle it.
-    // This preserves cached data for pan-back scenarios.
+    const visibleKeys = visibleTileKeySet(tiles)
+    evictStaleTiles(visibleKeys)
 
     const now = Date.now()
     const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(tileKeyFromCoord(t), now))
