@@ -138,6 +138,10 @@ export function shouldFetchEndpoint(
   return !loaded && !inFlight && now >= nextRetryAt
 }
 
+export function shouldUseDeviceTiles(zoom: number): boolean {
+  return Math.floor(zoom) >= 10
+}
+
 function encodeTypeParamToken(token: string): string {
   return encodeURIComponent(token.trim().toLowerCase())
 }
@@ -180,6 +184,19 @@ export function useTileLoader() {
       topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
       tileLoadStates.delete(key)
     }
+  }
+
+  function clearLoadedTiles() {
+    for (const key of [...tileCache.keys()]) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+      tileCache.delete(key)
+    }
+    tileLoadStates.clear()
+    if (topologyStore.nodeCount > 0 || topologyStore.edgeCount > 0 || topologyStore.clusterCount > 0) {
+      topologyStore.clear()
+    }
+    performanceStore.visibleElementCount = 0
+    telemetry.emit('visible_element_count', 0)
   }
 
   function visibleTileKeySet(tiles: TileCoord[] = viewportStore.visibleTiles): Set<string> {
@@ -367,6 +384,10 @@ export function useTileLoader() {
 
   function loadVisibleTiles() {
     if (!viewportStore.bounds) return
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) {
+      clearLoadedTiles()
+      return
+    }
 
     const tiles = viewportStore.visibleTiles
     const visibleKeys = visibleTileKeySet(tiles)
@@ -386,6 +407,10 @@ export function useTileLoader() {
 
   /** Force reload all tiles (e.g. when filters change) */
   function reloadAllTiles() {
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) {
+      clearLoadedTiles()
+      return
+    }
     // Evict stale data from topology store before clearing cache
     for (const key of [...tileCache.keys()]) {
       topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
@@ -454,6 +479,7 @@ export function useTileLoader() {
   // Retry scheduler: periodically check for visible tiles with pending retries
   const retryTickInterval = setInterval(() => {
     if (!viewportStore.bounds) return
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) return
     const now = Date.now()
     const tiles = viewportStore.visibleTiles
     const pendingRetries = tiles.filter((t) => {

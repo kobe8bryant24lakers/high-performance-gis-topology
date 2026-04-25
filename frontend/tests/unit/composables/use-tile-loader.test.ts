@@ -7,6 +7,7 @@ import {
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
+  shouldUseDeviceTiles,
   shouldFetchEndpoint,
 } from '@/composables/use-tile-loader'
 
@@ -90,6 +91,14 @@ describe('shouldFetchEndpoint', () => {
   it('returns true when endpoint is not loaded, not in flight, and retry window is open', () => {
     const now = Date.now()
     expect(shouldFetchEndpoint(false, false, now - 1, now)).toBe(true)
+  })
+})
+
+describe('shouldUseDeviceTiles', () => {
+  it('uses region summaries below device zoom and device tiles at zoom 10+', () => {
+    expect(shouldUseDeviceTiles(9.9)).toBe(false)
+    expect(shouldUseDeviceTiles(10)).toBe(true)
+    expect(shouldUseDeviceTiles(15.3)).toBe(true)
   })
 })
 

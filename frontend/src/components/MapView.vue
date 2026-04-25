@@ -14,6 +14,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox'
 import { useViewportStore } from '@/stores/viewport'
 import { useSelectionStore } from '@/stores/selection'
 import { useTileLoader } from '@/composables/use-tile-loader'
+import { useRegionLoader } from '@/composables/use-region-loader'
 import { useDeckLayers } from '@/composables/use-deck-layers'
 
 const emit = defineEmits<{
@@ -48,6 +49,7 @@ function handleHover(id: string | null) {
 
 const { layers } = useDeckLayers(handleClick, handleHover)
 const { loadVisibleTiles } = useTileLoader()
+const { loadRegionSummaries, dispose: disposeRegionLoader } = useRegionLoader()
 
 function syncViewport() {
   if (!map) return
@@ -108,6 +110,7 @@ onMounted(() => {
   map.on('moveend', syncViewport)
   map.on('load', () => {
     syncViewport()
+    loadRegionSummaries()
     loadVisibleTiles()
   })
 
@@ -117,6 +120,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  disposeRegionLoader()
   map?.remove()
   map = null
   overlay = null
