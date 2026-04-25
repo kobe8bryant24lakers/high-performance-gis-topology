@@ -10,7 +10,7 @@ describe('useViewportStore', () => {
   it('has default viewport state', () => {
     const store = useViewportStore()
     expect(store.zoom).toBe(2)
-    expect(store.center).toEqual({ lng: 0, lat: 0 })
+    expect(store.center).toEqual({ lng: 0.011, lat: 51.337 })
     expect(store.bounds).toBeNull()
   })
 
