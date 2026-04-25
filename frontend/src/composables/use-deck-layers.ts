@@ -6,7 +6,7 @@ import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { useRegionStore } from '@/stores/regions'
 import { telemetry } from '@/utils/telemetry'
-import { getNeIconSpec } from '@/constants/ne-icons'
+import { getNeIconSpec, toDeckColor } from '@/constants/ne-icons'
 import type { NetworkElement, RegionSummary, RegionVirtualLink, TopologyLink } from '@/types/topology'
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
@@ -202,6 +202,23 @@ export function useDeckLayers(
       }),
     )
 
+    if (degradationLevel === 'full') allLayers.push(
+      new ScatterplotLayer<NodeWithStub>({
+        id: 'node-presence-halos',
+        data: visibleRealNodes,
+        getPosition: (d) => getNodePosition(d),
+        getRadius: 18,
+        getFillColor: (d) => toDeckColor(d.type, 50),
+        getLineColor: (d) => toDeckColor(d.type, 190),
+        getLineWidth: 1.5,
+        lineWidthUnits: 'pixels' as const,
+        stroked: true,
+        filled: true,
+        radiusUnits: 'pixels' as const,
+        pickable: false,
+      }),
+    )
+
     allLayers.push(
       new IconLayer<NodeWithStub>({
         id: 'node-icons',
@@ -214,7 +231,7 @@ export function useDeckLayers(
           anchorY: 32,
           mask: false,
         }),
-        getSize: degradationLevel === 'minimal' ? 18 : 22,
+        getSize: degradationLevel === 'minimal' ? 18 : 30,
         sizeUnits: 'pixels' as const,
         alphaCutoff: 0.05,
         pickable: pickEnabled,

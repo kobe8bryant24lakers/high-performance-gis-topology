@@ -33,6 +33,7 @@ describe('useDeckLayers', () => {
     const layerIds = layers.value.map((layer) => layer.id)
 
     expect(layerIds).toContain('links')
+    expect(layerIds).toContain('node-presence-halos')
     expect(layerIds).toContain('node-icons')
     expect(layerIds).not.toContain('nodes')
     expect(layerIds).not.toContain('node-labels')
@@ -41,7 +42,12 @@ describe('useDeckLayers', () => {
     const icon = iconLayer?.props.getIcon(topologyStore.getElement('el-1'))
     expect(icon.url).toMatch(/^data:image\/svg\+xml,/)
     expect(icon.mask).toBe(false)
-    expect(iconLayer?.props.getSize).toBe(22)
+    expect(iconLayer?.props.getSize).toBe(30)
+
+    const haloLayer = layers.value.find((layer) => layer.id === 'node-presence-halos')
+    expect(haloLayer?.props.data).toHaveLength(1)
+    expect(haloLayer?.props.getRadius).toBe(18)
+    expect(haloLayer?.props.getFillColor(topologyStore.getElement('el-1'))).toEqual([77, 163, 255, 50])
   })
 
   it('keeps dense map layers complete after removing the alternate layout mode', () => {
