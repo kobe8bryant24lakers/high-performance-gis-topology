@@ -32,4 +32,13 @@ public class NetworkElement {
 
     @TableField(typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> properties;
+
+    @TableField("country_region_id")
+    private String countryRegionId;
+
+    @TableField("province_region_id")
+    private String provinceRegionId;
+
+    @TableField("city_region_id")
+    private String cityRegionId;
 }

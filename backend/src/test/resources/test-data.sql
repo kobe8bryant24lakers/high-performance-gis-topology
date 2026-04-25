@@ -73,6 +73,30 @@ SELECT
     '{}'::jsonb
 FROM generate_series(10, 999999) AS i;
 
+-- Assign every element to the deterministic synthetic region hierarchy from V2__add_regions.sql.
+WITH indexed AS (
+  SELECT
+      id,
+      LEAST(3, GREATEST(0, FLOOR((lng + 180.0) / 90.0)::int)) AS c,
+      LEAST(2, GREATEST(0, FLOOR((lat + 90.0) / 60.0)::int)) AS p,
+      lng
+  FROM network_elements
+),
+assigned AS (
+  SELECT
+      id,
+      c,
+      p,
+      LEAST(2, GREATEST(0, FLOOR((lng - (-180.0 + c * 90.0)) / 30.0)::int)) AS city
+  FROM indexed
+)
+UPDATE network_elements ne
+SET country_region_id = 'country-' || assigned.c,
+    province_region_id = 'province-' || assigned.c || '-' || assigned.p,
+    city_region_id = 'city-' || assigned.c || '-' || assigned.p || '-' || assigned.city
+FROM assigned
+WHERE ne.id = assigned.id;
+
 -- ── 10 fixed links establishing el-0 neighbourhood ───────────────────────────
 -- depth-1 from el-0: el-1, el-2, el-10, el-20
 -- depth-2 from el-0: el-30, el-40, el-50, el-60

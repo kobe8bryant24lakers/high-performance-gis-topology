@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.topology.gis.shared.mapper.RegionMapper">
+
+    <select id="findRegionTypeCounts" resultType="com.topology.gis.region.dto.RegionTypeCountRow">
+        SELECT
+            r.id AS region_id,
+            r.level,
+            r.name,
+            r.parent_id,
+            r.centroid_lng,
+            r.centroid_lat,
+            r.bbox_west,
+            r.bbox_south,
+            r.bbox_east,
+            r.bbox_north,
+            ne.type,
+            COUNT(ne.id) AS count
+        FROM regions r
+        JOIN network_elements ne ON ne.${regionColumn} = r.id
+        WHERE r.level = #{level}
+          AND r.geom &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND (#{types}::text[] IS NULL OR ne.type = ANY(#{types}::text[]))
+          AND (#{propFilter}::text IS NULL OR ne.properties @&gt; #{propFilter}::jsonb)
+        GROUP BY
+            r.id, r.level, r.name, r.parent_id, r.centroid_lng, r.centroid_lat,
+            r.bbox_west, r.bbox_south, r.bbox_east, r.bbox_north, ne.type
+        ORDER BY r.id, ne.type
+    </select>
+
+    <select id="findInternalLinkCounts" resultType="com.topology.gis.region.dto.RegionInternalLinkRow">
+        SELECT
+            src.${regionColumn} AS region_id,
+            COUNT(tl.id) AS count
+        FROM topology_links tl
+        JOIN network_elements src ON src.id = tl.source_id
+        JOIN network_elements tgt ON tgt.id = tl.target_id
+        JOIN regions r ON r.id = src.${regionColumn}
+        WHERE r.level = #{level}
+          AND r.geom &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND src.${regionColumn} = tgt.${regionColumn}
+          AND (#{types}::text[] IS NULL OR (src.type = ANY(#{types}::text[]) AND tgt.type = ANY(#{types}::text[])))
+          AND (#{propFilter}::text IS NULL OR (src.properties @&gt; #{propFilter}::jsonb AND tgt.properties @&gt; #{propFilter}::jsonb))
+        GROUP BY src.${regionColumn}
+        ORDER BY src.${regionColumn}
+    </select>
+
+    <select id="findVirtualLinks" resultType="com.topology.gis.region.dto.RegionVirtualLinkRow">
+        SELECT
+            LEAST(src.${regionColumn}, tgt.${regionColumn}) AS source_region_id,
+            GREATEST(src.${regionColumn}, tgt.${regionColumn}) AS target_region_id,
+            COUNT(tl.id) AS count
+        FROM topology_links tl
+        JOIN network_elements src ON src.id = tl.source_id
+        JOIN network_elements tgt ON tgt.id = tl.target_id
+        JOIN regions source_region ON source_region.id = src.${regionColumn}
+        JOIN regions target_region ON target_region.id = tgt.${regionColumn}
+        WHERE source_region.level = #{level}
+          AND target_region.level = #{level}
+          AND source_region.geom &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND target_region.geom &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+          AND src.${regionColumn} &lt;&gt; tgt.${regionColumn}
+          AND (#{types}::text[] IS NULL OR (src.type = ANY(#{types}::text[]) AND tgt.type = ANY(#{types}::text[])))
+          AND (#{propFilter}::text IS NULL OR (src.properties @&gt; #{propFilter}::jsonb AND tgt.properties @&gt; #{propFilter}::jsonb))
+        GROUP BY LEAST(src.${regionColumn}, tgt.${regionColumn}), GREATEST(src.${regionColumn}, tgt.${regionColumn})
+        ORDER BY count DESC, source_region_id, target_region_id
+        LIMIT #{limit}
+    </select>
+</mapper>
