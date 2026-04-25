@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
+import { useRegionStore } from '@/stores/regions'
 import { useDeckLayers } from '@/composables/use-deck-layers'
 
 describe('useDeckLayers', () => {
@@ -84,5 +85,68 @@ describe('useDeckLayers', () => {
     expect(iconLayer?.props.data).toHaveLength(5_100)
     expect(linkLayer?.props.data).toHaveLength(5_099)
     expect(linkLayer?.props.getWidth).toBe(1.5)
+  })
+
+  it('renders region summary layers instead of device layers when region summaries are active', () => {
+    const regionStore = useRegionStore()
+    regionStore.replaceSummary({
+      level: 'country',
+      generation: 1,
+      regions: [
+        {
+          id: 'country-0',
+          level: 'country',
+          name: 'Country 1',
+          parentId: null,
+          centroidLng: -135,
+          centroidLat: 0,
+          bbox: { west: -180, south: -90, east: -90, north: 90 },
+          totalCount: 1000,
+          elementTypes: {
+            firewall: 50,
+            router: 100,
+            switch: 300,
+            server: 150,
+            'access-point': 400,
+          },
+          internalLinkCount: 12,
+        },
+        {
+          id: 'country-1',
+          level: 'country',
+          name: 'Country 2',
+          parentId: null,
+          centroidLng: -45,
+          centroidLat: 0,
+          bbox: { west: -90, south: -90, east: 0, north: 90 },
+          totalCount: 500,
+          elementTypes: {
+            firewall: 25,
+            router: 50,
+            switch: 150,
+            server: 75,
+            'access-point': 200,
+          },
+          internalLinkCount: 8,
+        },
+      ],
+      links: [{
+        id: 'country-0--country-1',
+        sourceRegionId: 'country-0',
+        targetRegionId: 'country-1',
+        count: 42,
+      }],
+    })
+
+    const { layers } = useDeckLayers(() => undefined, () => undefined)
+    const layerIds = layers.value.map((layer) => layer.id)
+
+    expect(layerIds).toContain('region-virtual-links')
+    expect(layerIds).toContain('region-boundaries')
+    expect(layerIds).toContain('region-summary-labels')
+    expect(layerIds).not.toContain('node-icons')
+
+    const linkLayer = layers.value.find((layer) => layer.id === 'region-virtual-links')
+    expect(linkLayer?.props.data).toHaveLength(1)
   })
 })
