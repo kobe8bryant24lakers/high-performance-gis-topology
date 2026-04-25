@@ -2,7 +2,37 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTopologyStore } from '@/stores/topology'
 import { useRegionStore } from '@/stores/regions'
+import { useViewportStore } from '@/stores/viewport'
+import { usePerformanceStore } from '@/stores/performance'
 import { useDeckLayers } from '@/composables/use-deck-layers'
+
+function cityRegionSummary() {
+  return {
+    level: 'city' as const,
+    generation: 1,
+    regions: [
+      {
+        id: 'city-0',
+        level: 'city' as const,
+        name: 'City 1',
+        parentId: 'province-0',
+        centroidLng: 0,
+        centroidLat: 51,
+        bbox: { west: -1, south: 50, east: 1, north: 52 },
+        totalCount: 100,
+        elementTypes: {
+          firewall: 10,
+          router: 20,
+          switch: 30,
+          server: 20,
+          'access-point': 20,
+        },
+        internalLinkCount: 4,
+      },
+    ],
+    links: [],
+  }
+}
 
 describe('useDeckLayers', () => {
   beforeEach(() => {
@@ -95,54 +125,7 @@ describe('useDeckLayers', () => {
 
   it('renders region summary layers instead of device layers when region summaries are active', () => {
     const regionStore = useRegionStore()
-    regionStore.replaceSummary({
-      level: 'country',
-      generation: 1,
-      regions: [
-        {
-          id: 'country-0',
-          level: 'country',
-          name: 'Country 1',
-          parentId: null,
-          centroidLng: -135,
-          centroidLat: 0,
-          bbox: { west: -180, south: -90, east: -90, north: 90 },
-          totalCount: 1000,
-          elementTypes: {
-            firewall: 50,
-            router: 100,
-            switch: 300,
-            server: 150,
-            'access-point': 400,
-          },
-          internalLinkCount: 12,
-        },
-        {
-          id: 'country-1',
-          level: 'country',
-          name: 'Country 2',
-          parentId: null,
-          centroidLng: -45,
-          centroidLat: 0,
-          bbox: { west: -90, south: -90, east: 0, north: 90 },
-          totalCount: 500,
-          elementTypes: {
-            firewall: 25,
-            router: 50,
-            switch: 150,
-            server: 75,
-            'access-point': 200,
-          },
-          internalLinkCount: 8,
-        },
-      ],
-      links: [{
-        id: 'country-0--country-1',
-        sourceRegionId: 'country-0',
-        targetRegionId: 'country-1',
-        count: 42,
-      }],
-    })
+    regionStore.replaceSummary(cityRegionSummary())
 
     const { layers } = useDeckLayers(() => undefined, () => undefined)
     const layerIds = layers.value.map((layer) => layer.id)
@@ -153,6 +136,60 @@ describe('useDeckLayers', () => {
     expect(layerIds).not.toContain('node-icons')
 
     const linkLayer = layers.value.find((layer) => layer.id === 'region-virtual-links')
-    expect(linkLayer?.props.data).toHaveLength(1)
+    expect(linkLayer?.props.data).toHaveLength(0)
+  })
+
+  it('uses region summaries as high-zoom guidance when the device viewport is empty', () => {
+    const viewportStore = useViewportStore()
+    const regionStore = useRegionStore()
+    const performanceStore = usePerformanceStore()
+    viewportStore.updateViewport({
+      zoom: 12,
+      center: { lng: 0, lat: 51 },
+      bounds: { west: -1, south: 50, east: 1, north: 52 },
+    })
+    performanceStore.visibleElementCount = 0
+    regionStore.replaceSummary(cityRegionSummary())
+
+    const { layers } = useDeckLayers(() => undefined, () => undefined)
+    const layerIds = layers.value.map((layer) => layer.id)
+
+    expect(layerIds).toContain('region-summary-labels')
+    expect(layerIds).not.toContain('node-icons')
+  })
+
+  it('prefers device layers at high zoom once visible devices are loaded', () => {
+    const viewportStore = useViewportStore()
+    const topologyStore = useTopologyStore()
+    const regionStore = useRegionStore()
+    const performanceStore = usePerformanceStore()
+    viewportStore.updateViewport({
+      zoom: 12,
+      center: { lng: 0, lat: 51 },
+      bounds: { west: -1, south: 50, east: 1, north: 52 },
+    })
+    performanceStore.visibleElementCount = 1
+    regionStore.replaceSummary(cityRegionSummary())
+    topologyStore.mergeTileElements('z12/x1/y1', {
+      elements: [{
+        id: 'el-1',
+        type: 'router',
+        label: 'router-1',
+        lng: 0,
+        lat: 51,
+        version: 1,
+        updatedAt: '2026-01-01T00:00:00Z',
+        properties: {},
+      }],
+      clusters: [],
+      generation: 1,
+      removedIds: [],
+    })
+
+    const { layers } = useDeckLayers(() => undefined, () => undefined)
+    const layerIds = layers.value.map((layer) => layer.id)
+
+    expect(layerIds).toContain('node-icons')
+    expect(layerIds).not.toContain('region-summary-labels')
   })
 })

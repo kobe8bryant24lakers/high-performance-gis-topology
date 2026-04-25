@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import MapView from '@/components/MapView.vue'
+import { usePerformanceStore } from '@/stores/performance'
+import { useViewportStore } from '@/stores/viewport'
 
 const mapConstructor = vi.fn()
 const loadVisibleTiles = vi.fn()
@@ -79,5 +82,21 @@ describe('MapView', () => {
 
     expect(loadRegionSummaries).toHaveBeenCalledOnce()
     expect(loadVisibleTiles).toHaveBeenCalledOnce()
+  })
+
+  it('shows guidance when a device-zoom viewport has no visible devices', async () => {
+    const wrapper = mount(MapView)
+    const viewportStore = useViewportStore()
+    const performanceStore = usePerformanceStore()
+
+    viewportStore.updateViewport({
+      zoom: 12,
+      center: { lng: 0, lat: 51 },
+      bounds: { west: -1, south: 50, east: 1, north: 52 },
+    })
+    performanceStore.visibleElementCount = 0
+    await nextTick()
+
+    expect(wrapper.find('[data-test="empty-device-guide"]').exists()).toBe(true)
   })
 })

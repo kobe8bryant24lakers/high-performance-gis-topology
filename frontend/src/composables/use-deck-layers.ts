@@ -5,6 +5,7 @@ import { useSelectionStore } from '@/stores/selection'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
 import { useRegionStore } from '@/stores/regions'
+import { useViewportStore } from '@/stores/viewport'
 import { telemetry } from '@/utils/telemetry'
 import { getNeIconSpec, toDeckColor } from '@/constants/ne-icons'
 import type { NetworkElement, RegionSummary, RegionVirtualLink, TopologyLink } from '@/types/topology'
@@ -22,6 +23,7 @@ export function useDeckLayers(
   const filterStore = useFilterStore()
   const performanceStore = usePerformanceStore()
   const regionStore = useRegionStore()
+  const viewportStore = useViewportStore()
 
   const cachedNodes = shallowRef<NodeWithStub[]>([])
   const cachedEdges = shallowRef<EdgeData[]>([])
@@ -88,7 +90,10 @@ export function useDeckLayers(
     const layerBuildStart = performance.now()
     const allLayers: any[] = []
     const regions = regionStore.regionsList
-    if (regions.length > 0) {
+    const isDeviceZoom = Math.floor(viewportStore.zoom) >= 10
+    const shouldRenderRegions = regions.length > 0
+      && (!isDeviceZoom || performanceStore.visibleElementCount === 0)
+    if (shouldRenderRegions) {
       const regionById = new Map(regions.map((region) => [region.id, region]))
       const regionEdges: RegionEdgeData[] = regionStore.links
         .map((link) => {

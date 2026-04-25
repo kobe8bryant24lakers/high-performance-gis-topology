@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { shouldUseRegionSummaries, useRegionLoader } from '@/composables/use-region-loader'
 import { useViewportStore } from '@/stores/viewport'
 import { useRegionStore } from '@/stores/regions'
+import { usePerformanceStore } from '@/stores/performance'
 
 const fetchRegionSummary = vi.fn()
 
@@ -24,6 +25,8 @@ describe('shouldUseRegionSummaries', () => {
     expect(shouldUseRegionSummaries(2)).toBe(true)
     expect(shouldUseRegionSummaries(9.9)).toBe(true)
     expect(shouldUseRegionSummaries(10)).toBe(false)
+    expect(shouldUseRegionSummaries(12, 0)).toBe(true)
+    expect(shouldUseRegionSummaries(12, 4)).toBe(false)
   })
 })
 
@@ -54,15 +57,17 @@ describe('useRegionLoader', () => {
     dispose()
   })
 
-  it('clears region summaries at device zoom', async () => {
+  it('clears region summaries at device zoom when devices are visible', async () => {
     const viewportStore = useViewportStore()
     const regionStore = useRegionStore()
+    const performanceStore = usePerformanceStore()
     regionStore.replaceSummary({
       level: 'country',
       regions: [],
       links: [],
       generation: 1,
     })
+    performanceStore.visibleElementCount = 4
     viewportStore.updateViewport({
       zoom: 10,
       center: { lng: 0, lat: 0 },
@@ -74,6 +79,30 @@ describe('useRegionLoader', () => {
 
     expect(regionStore.level).toBeNull()
     expect(fetchRegionSummary).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('loads city region guidance at device zoom when the visible device viewport is empty', async () => {
+    const viewportStore = useViewportStore()
+    const performanceStore = usePerformanceStore()
+    performanceStore.visibleElementCount = 0
+    viewportStore.updateViewport({
+      zoom: 12,
+      center: { lng: 0.011, lat: 51.337 },
+      bounds: { west: -0.2, south: 51.1, east: 0.2, north: 51.5 },
+    })
+    fetchRegionSummary.mockResolvedValueOnce({
+      level: 'city',
+      regions: [],
+      links: [],
+      generation: 1,
+    })
+
+    const { loadRegionSummaries, dispose } = useRegionLoader()
+    await loadRegionSummaries()
+
+    expect(fetchRegionSummary).toHaveBeenCalledOnce()
+    expect(fetchRegionSummary.mock.calls[0][0]).toMatchObject({ z: 9 })
     dispose()
   })
 })
