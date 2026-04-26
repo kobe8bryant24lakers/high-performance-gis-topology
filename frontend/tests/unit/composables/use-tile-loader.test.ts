@@ -3,9 +3,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import {
   bboxToTiles,
   buildFilterQueryString,
+  computeStaleTileKeys,
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
+  shouldUseDeviceTiles,
   shouldFetchEndpoint,
 } from '@/composables/use-tile-loader'
 
@@ -66,6 +68,13 @@ describe('bboxToTiles', () => {
     expect(computeVisibleElementCount(visible, tileStates)).toBe(200)
   })
 
+  it('identifies loaded tiles outside the current viewport', () => {
+    const loaded = ['2/1/1', '2/1/2', '3/4/4']
+    const visible = new Set(['2/1/2'])
+
+    expect(computeStaleTileKeys(loaded, visible)).toEqual(['2/1/1', '3/4/4'])
+  })
+
   it('caps tile retry delay with exponential backoff', () => {
     expect(computeTileRetryDelayMs(1)).toBe(500)
     expect(computeTileRetryDelayMs(2)).toBe(1000)
@@ -82,6 +91,14 @@ describe('shouldFetchEndpoint', () => {
   it('returns true when endpoint is not loaded, not in flight, and retry window is open', () => {
     const now = Date.now()
     expect(shouldFetchEndpoint(false, false, now - 1, now)).toBe(true)
+  })
+})
+
+describe('shouldUseDeviceTiles', () => {
+  it('uses region summaries below device zoom and device tiles at zoom 10+', () => {
+    expect(shouldUseDeviceTiles(9.9)).toBe(false)
+    expect(shouldUseDeviceTiles(10)).toBe(true)
+    expect(shouldUseDeviceTiles(15.3)).toBe(true)
   })
 })
 

@@ -118,6 +118,17 @@ export function computeVisibleElementCount(
   return total
 }
 
+export function computeStaleTileKeys(
+  loadedTileKeys: Iterable<string>,
+  visibleTileKeys: ReadonlySet<string>,
+): string[] {
+  const stale: string[] = []
+  for (const key of loadedTileKeys) {
+    if (!visibleTileKeys.has(key)) stale.push(key)
+  }
+  return stale
+}
+
 export function shouldFetchEndpoint(
   loaded: boolean,
   inFlight: boolean,
@@ -125,6 +136,10 @@ export function shouldFetchEndpoint(
   now: number,
 ): boolean {
   return !loaded && !inFlight && now >= nextRetryAt
+}
+
+export function shouldUseDeviceTiles(zoom: number): boolean {
+  return Math.floor(zoom) >= 10
 }
 
 function encodeTypeParamToken(token: string): string {
@@ -168,6 +183,41 @@ export function useTileLoader() {
     for (const key of tileKeys) {
       topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
       tileLoadStates.delete(key)
+    }
+  }
+
+  function clearLoadedTiles() {
+    for (const key of [...tileCache.keys()]) {
+      topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
+      tileCache.delete(key)
+    }
+    tileLoadStates.clear()
+    if (topologyStore.nodeCount > 0 || topologyStore.edgeCount > 0 || topologyStore.clusterCount > 0) {
+      topologyStore.clear()
+    }
+    performanceStore.visibleElementCount = 0
+    telemetry.emit('visible_element_count', 0)
+  }
+
+  function visibleTileKeySet(tiles: TileCoord[] = viewportStore.visibleTiles): Set<string> {
+    return new Set(tiles.map(tileKeyFromCoord))
+  }
+
+  function isTileStillVisible(tileKey: string): boolean {
+    return visibleTileKeySet().has(tileKey)
+  }
+
+  function evictStaleTiles(visibleKeys: ReadonlySet<string>) {
+    const cachedStaleKeys = computeStaleTileKeys(tileCache.keys(), visibleKeys)
+    evictTiles(cachedStaleKeys)
+    for (const key of cachedStaleKeys) {
+      tileCache.delete(key)
+    }
+
+    for (const key of computeStaleTileKeys(tileLoadStates.keys(), visibleKeys)) {
+      if (!tileCache.has(key)) {
+        tileLoadStates.delete(key)
+      }
     }
   }
 
@@ -293,6 +343,10 @@ export function useTileLoader() {
       && elemResult.status === 'fulfilled'
       && !!elemResult.value
     if (elemOk && elemResult.status === 'fulfilled') {
+      if (!isTileStillVisible(tileKey)) {
+        tileLoadStates.delete(tileKey)
+        return
+      }
       topologyStore.mergeTileElements(tileKey, elemResult.value!)
       state.elementsLoaded = true
       state.elementRetryCount = 0
@@ -306,6 +360,10 @@ export function useTileLoader() {
       && linkResult.status === 'fulfilled'
       && !!linkResult.value
     if (linkOk && linkResult.status === 'fulfilled') {
+      if (!isTileStillVisible(tileKey)) {
+        tileLoadStates.delete(tileKey)
+        return
+      }
       topologyStore.mergeTileLinks(tileKey, linkResult.value!)
       state.linksLoaded = true
       state.linkRetryCount = 0
@@ -326,13 +384,14 @@ export function useTileLoader() {
 
   function loadVisibleTiles() {
     if (!viewportStore.bounds) return
-
-    tileService.cancelAll()
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) {
+      clearLoadedTiles()
+      return
+    }
 
     const tiles = viewportStore.visibleTiles
-
-    // Don't eagerly evict offscreen tiles — let LRU/budget pressure handle it.
-    // This preserves cached data for pan-back scenarios.
+    const visibleKeys = visibleTileKeySet(tiles)
+    evictStaleTiles(visibleKeys)
 
     const now = Date.now()
     const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(tileKeyFromCoord(t), now))
@@ -348,6 +407,10 @@ export function useTileLoader() {
 
   /** Force reload all tiles (e.g. when filters change) */
   function reloadAllTiles() {
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) {
+      clearLoadedTiles()
+      return
+    }
     // Evict stale data from topology store before clearing cache
     for (const key of [...tileCache.keys()]) {
       topologyStore.evictTile(key, performanceStore.pinnedNodeIds)
@@ -416,6 +479,7 @@ export function useTileLoader() {
   // Retry scheduler: periodically check for visible tiles with pending retries
   const retryTickInterval = setInterval(() => {
     if (!viewportStore.bounds) return
+    if (!shouldUseDeviceTiles(viewportStore.zoom)) return
     const now = Date.now()
     const tiles = viewportStore.visibleTiles
     const pendingRetries = tiles.filter((t) => {

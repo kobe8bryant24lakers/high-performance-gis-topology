@@ -12,7 +12,13 @@
           :checked="filterStore.criteria.types.includes(t)"
           @change="filterStore.toggleType(t)"
         />
-        {{ t }}
+        <img
+          :src="describeType(t).iconUrl"
+          :alt="describeType(t).label"
+          class="type-icon"
+          data-test="ne-filter-icon"
+        />
+        <span>{{ describeType(t).label }}</span>
       </label>
     </div>
 
@@ -58,13 +64,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useFilterStore } from '@/stores/filter'
+import { KNOWN_NE_TYPES, getNeIconSpec } from '@/constants/ne-icons'
 
 const filterStore = useFilterStore()
 
-const availableTypes = ['router', 'switch', 'server', 'firewall', 'access-point']
+const availableTypes = KNOWN_NE_TYPES
 
 const propKey = ref('')
 const propValue = ref('')
+
+function describeType(type: string) {
+  return getNeIconSpec(type)
+}
 
 function addPropertyFilter() {
   if (propKey.value && propValue.value) {
@@ -102,6 +113,12 @@ function addPropertyFilter() {
 
 .filter-checkbox input {
   accent-color: #89b4fa;
+}
+
+.type-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .property-filter {

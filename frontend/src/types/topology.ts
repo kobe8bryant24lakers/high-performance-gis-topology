@@ -39,6 +39,41 @@ export interface EndpointStub {
   lat: number
 }
 
+export type RegionLevel = 'country' | 'province' | 'city'
+
+export interface RegionBBox {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+export interface RegionSummary {
+  id: string
+  level: RegionLevel
+  name: string
+  parentId: string | null
+  centroidLng: number
+  centroidLat: number
+  bbox: RegionBBox
+  totalCount: number
+  elementTypes: Record<string, number>
+  internalLinkCount: number
+}
+
+export interface RegionVirtualLink {
+  id: string
+  sourceRegionId: string
+  targetRegionId: string
+  count: number
+}
+
+export interface DeviceHeatmapCell {
+  x: number
+  y: number
+  count: number
+}
+
 // --- API Response Types ---
 
 export interface TileElementsResponse {
@@ -53,6 +88,26 @@ export interface TileLinksResponse {
   stubs: EndpointStub[]
   generation: number
   removedLinkIds: string[]
+}
+
+export interface RegionSummaryResponse {
+  level: RegionLevel | null
+  regions: RegionSummary[]
+  links: RegionVirtualLink[]
+  generation: number
+}
+
+export interface DeviceHeatmapResponse {
+  west: number
+  south: number
+  east: number
+  north: number
+  columns: number
+  rows: number
+  maxCount: number
+  totalCount: number
+  cells: DeviceHeatmapCell[]
+  generation: number
 }
 
 export interface ElementDetailResponse extends NetworkElement {}

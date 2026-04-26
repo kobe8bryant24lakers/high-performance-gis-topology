@@ -39,6 +39,9 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
+# Local agent/session artifacts
+.superpowers/
+
 # Maven build output
 backend/target/
 

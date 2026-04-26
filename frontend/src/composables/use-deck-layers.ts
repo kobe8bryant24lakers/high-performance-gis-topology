@@ -1,46 +1,29 @@
 import { computed, shallowRef, watch } from 'vue'
-import { ScatterplotLayer, LineLayer, TextLayer } from '@deck.gl/layers'
+import { IconLayer, LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
-import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
+import { useRegionStore } from '@/stores/regions'
+import { useViewportStore } from '@/stores/viewport'
 import { telemetry } from '@/utils/telemetry'
-import type { NetworkElement, TopologyLink } from '@/types/topology'
-import type { LayoutPosition } from '@/workers/layout-worker'
-
-// Color per element type [R, G, B, A]
-const TYPE_COLORS: Record<string, [number, number, number, number]> = {
-  router:        [74,  222, 128, 220],  // green
-  switch:        [96,  165, 250, 220],  // blue
-  server:        [167, 139, 250, 220],  // purple
-  firewall:      [248, 113, 113, 220],  // red
-  'access-point':[250, 204,  21, 220],  // yellow
-}
-const DEFAULT_COLOR: [number, number, number, number] = [100, 149, 237, 220]
-
-// Unicode label per type
-const TYPE_LABELS: Record<string, string> = {
-  router:         'R',
-  switch:         'S',
-  server:         'Sv',
-  firewall:       'F',
-  'access-point': 'AP',
-}
+import { getNeIconSpec, toDeckColor } from '@/constants/ne-icons'
+import type { NetworkElement, RegionSummary, RegionVirtualLink, TopologyLink } from '@/types/topology'
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
+interface RegionEdgeData { source: RegionSummary; target: RegionSummary; link: RegionVirtualLink }
 
 export function useDeckLayers(
   onElementClick: (id: string, event?: PointerEvent) => void,
   onElementHover: (id: string | null) => void,
-  layoutPositions?: () => Map<string, LayoutPosition>,
 ) {
   const topologyStore = useTopologyStore()
   const selectionStore = useSelectionStore()
-  const viewModeStore = useViewModeStore()
   const filterStore = useFilterStore()
   const performanceStore = usePerformanceStore()
+  const regionStore = useRegionStore()
+  const viewportStore = useViewportStore()
 
   const cachedNodes = shallowRef<NodeWithStub[]>([])
   const cachedEdges = shallowRef<EdgeData[]>([])
@@ -70,26 +53,117 @@ export function useDeckLayers(
   )
 
   function getNodePosition(node: NodeWithStub): [number, number] {
-    if (viewModeStore.isSchematic && layoutPositions) {
-      const pos = layoutPositions().get(node.id)
-      if (pos) return [pos.x, pos.y]
-      return [0, 0]
-    }
     return [node.lng, node.lat]
+  }
+
+  function getRegionPosition(region: RegionSummary): [number, number] {
+    return [region.centroidLng, region.centroidLat]
+  }
+
+  function getRegionPolygon(region: RegionSummary): [number, number][] {
+    const { west, south, east, north } = region.bbox
+    return [
+      [west, south],
+      [east, south],
+      [east, north],
+      [west, north],
+    ]
+  }
+
+  function compactNumber(value: number): string {
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+    return `${value}`
+  }
+
+  function formatRegionLabel(region: RegionSummary): string {
+    const counts = region.elementTypes
+    return [
+      region.name,
+      `${compactNumber(region.totalCount)} devices`,
+      `FW ${compactNumber(counts.firewall ?? 0)}  RT ${compactNumber(counts.router ?? 0)}`,
+      `SW ${compactNumber(counts.switch ?? 0)}  SRV ${compactNumber(counts.server ?? 0)}  AP ${compactNumber(counts['access-point'] ?? 0)}`,
+    ].join('\n')
   }
 
   const layers = computed(() => {
     const layerBuildStart = performance.now()
     const allLayers: any[] = []
+    const regions = regionStore.regionsList
+    const isDeviceZoom = Math.floor(viewportStore.zoom) >= 10
+    const shouldRenderRegions = regions.length > 0
+      && (!isDeviceZoom || performanceStore.visibleElementCount === 0)
+    if (shouldRenderRegions) {
+      const regionById = new Map(regions.map((region) => [region.id, region]))
+      const regionEdges: RegionEdgeData[] = regionStore.links
+        .map((link) => {
+          const source = regionById.get(link.sourceRegionId)
+          const target = regionById.get(link.targetRegionId)
+          if (!source || !target) return null
+          return { source, target, link }
+        })
+        .filter((edge): edge is RegionEdgeData => edge !== null)
+
+      allLayers.push(
+        new LineLayer<RegionEdgeData>({
+          id: 'region-virtual-links',
+          data: regionEdges,
+          getSourcePosition: (d) => getRegionPosition(d.source),
+          getTargetPosition: (d) => getRegionPosition(d.target),
+          getColor: [96, 165, 250, 180],
+          getWidth: (d) => Math.min(8, Math.max(1.5, Math.log10(d.link.count + 1) * 1.8)),
+          widthUnits: 'pixels' as const,
+        }),
+      )
+
+      allLayers.push(
+        new PolygonLayer<RegionSummary>({
+          id: 'region-boundaries',
+          data: regions,
+          getPolygon: getRegionPolygon,
+          getFillColor: [37, 99, 235, 18],
+          getLineColor: [125, 211, 252, 145],
+          getLineWidth: 1,
+          lineWidthUnits: 'pixels' as const,
+          stroked: true,
+          filled: true,
+        }),
+      )
+
+      allLayers.push(
+        new TextLayer<RegionSummary>({
+          id: 'region-summary-labels',
+          data: regions,
+          getPosition: getRegionPosition,
+          getText: formatRegionLabel,
+          getSize: 12,
+          sizeUnits: 'pixels' as const,
+          getColor: [226, 232, 240, 255],
+          getTextAnchor: 'middle' as const,
+          getAlignmentBaseline: 'center' as const,
+          background: true,
+          getBackgroundColor: [15, 23, 42, 220],
+          backgroundPadding: [8, 6] as [number, number],
+          pickable: false,
+        }),
+      )
+
+      telemetry.emit('layer_rebuild_ms', performance.now() - layerBuildStart)
+      return allLayers
+    }
+
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
     const { hoverEnabled, pickEnabled, degradationLevel } = performanceStore
+    const visibleRealNodes = nodes.filter((n) => !n.isStub)
+    const visibleStubNodes = nodes.filter((n) => n.isStub)
+    const visibleEdges = edges
 
     // Link layer
     allLayers.push(
       new LineLayer({
         id: 'links',
-        data: edges,
+        data: visibleEdges,
         getSourcePosition: (d: EdgeData) => getNodePosition(d.source),
         getTargetPosition: (d: EdgeData) => getNodePosition(d.target),
         getColor: (d: EdgeData) => {
@@ -98,10 +172,6 @@ export function useDeckLayers(
         },
         getWidth: 1.5,
         widthUnits: 'pixels' as const,
-        updateTriggers: {
-          getSourcePosition: [viewModeStore.mode, layoutPositions?.()],
-          getTargetPosition: [viewModeStore.mode, layoutPositions?.()],
-        },
       }),
     )
 
@@ -121,23 +191,54 @@ export function useDeckLayers(
         radiusUnits: 'pixels' as const,
         updateTriggers: {
           data: [selectionStore.selectedIds],
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
         },
       }),
     )
 
-    // Node circles with type-based colors
+    // Endpoint stubs stay lightweight as circles.
     allLayers.push(
       new ScatterplotLayer({
-        id: 'nodes',
-        data: nodes,
+        id: 'node-stubs',
+        data: visibleStubNodes,
         getPosition: (d: NodeWithStub) => getNodePosition(d),
-        getRadius: (d: NodeWithStub) => (d.isStub ? 3 : 7),
-        getFillColor: (d: NodeWithStub) => {
-          if (d.isStub) return [150, 150, 150, 100]
-          return TYPE_COLORS[d.type] ?? DEFAULT_COLOR
-        },
+        getRadius: 3,
+        getFillColor: [150, 150, 150, 100],
         radiusUnits: 'pixels' as const,
+      }),
+    )
+
+    if (degradationLevel === 'full') allLayers.push(
+      new ScatterplotLayer<NodeWithStub>({
+        id: 'node-presence-halos',
+        data: visibleRealNodes,
+        getPosition: (d) => getNodePosition(d),
+        getRadius: 18,
+        getFillColor: (d) => toDeckColor(d.type, 50),
+        getLineColor: (d) => toDeckColor(d.type, 190),
+        getLineWidth: 1.5,
+        lineWidthUnits: 'pixels' as const,
+        stroked: true,
+        filled: true,
+        radiusUnits: 'pixels' as const,
+        pickable: false,
+      }),
+    )
+
+    allLayers.push(
+      new IconLayer<NodeWithStub>({
+        id: 'node-icons',
+        data: visibleRealNodes,
+        getPosition: (d: NodeWithStub) => getNodePosition(d),
+        getIcon: (d: NodeWithStub) => ({
+          url: getNeIconSpec(d.type).iconUrl,
+          width: 64,
+          height: 64,
+          anchorY: 32,
+          mask: false,
+        }),
+        getSize: degradationLevel === 'minimal' ? 18 : 30,
+        sizeUnits: 'pixels' as const,
+        alphaCutoff: 0.05,
         pickable: pickEnabled,
         onClick: pickEnabled
           ? (info: { object?: NetworkElement; srcEvent?: PointerEvent }) => {
@@ -150,26 +251,8 @@ export function useDeckLayers(
             }
           : undefined,
         updateTriggers: {
-          getFillColor: [selectionStore.selectedIds],
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
-        },
-      }),
-    )
-
-    // Type label layer — only at full fidelity (< 10k nodes)
-    if (degradationLevel === 'full') allLayers.push(
-      new TextLayer({
-        id: 'node-labels',
-        data: nodes.filter((n) => !n.isStub),
-        getPosition: (d: NodeWithStub) => getNodePosition(d),
-        getText: (d: NodeWithStub) => TYPE_LABELS[d.type] ?? d.type.slice(0, 2).toUpperCase(),
-        getSize: 8,
-        getColor: [255, 255, 255, 220],
-        getTextAnchor: 'middle' as const,
-        getAlignmentBaseline: 'center' as const,
-        fontFamily: 'monospace',
-        updateTriggers: {
-          getPosition: [viewModeStore.mode, layoutPositions?.()],
+          getIcon: [nodes],
+          getSize: [degradationLevel],
         },
       }),
     )

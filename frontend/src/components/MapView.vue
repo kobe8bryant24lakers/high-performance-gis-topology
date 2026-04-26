@@ -2,19 +2,36 @@
   <div ref="containerRef" class="map-view">
     <div ref="mapRef" class="map-container" />
     <canvas ref="deckRef" class="deck-canvas" />
+    <OverviewMinimap
+      :bounds="viewportStore.bounds"
+      :mouse-position="mousePosition"
+      @navigate="onOverviewNavigate"
+    />
+    <div
+      v-if="showEmptyDeviceGuide"
+      class="empty-device-guide"
+      data-test="empty-device-guide"
+    >
+      <strong>No devices in this viewport</strong>
+      <span>{{ emptyDeviceGuideText }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { Deck } from '@deck.gl/core'
 import { MapboxOverlay } from '@deck.gl/mapbox'
 import { useViewportStore } from '@/stores/viewport'
 import { useSelectionStore } from '@/stores/selection'
+import { usePerformanceStore } from '@/stores/performance'
+import { useRegionStore } from '@/stores/regions'
 import { useTileLoader } from '@/composables/use-tile-loader'
+import { useRegionLoader } from '@/composables/use-region-loader'
 import { useDeckLayers } from '@/composables/use-deck-layers'
+import OverviewMinimap from '@/components/OverviewMinimap.vue'
 
 const emit = defineEmits<{
   elementClick: [id: string]
@@ -26,11 +43,22 @@ const mapRef = ref<HTMLElement | null>(null)
 
 const viewportStore = useViewportStore()
 const selectionStore = useSelectionStore()
+const performanceStore = usePerformanceStore()
+const regionStore = useRegionStore()
 
 let map: mapboxgl.Map | null = null
 let overlay: MapboxOverlay | null = null
 
 const hoveredId = ref<string | null>(null)
+const mousePosition = ref<{ lng: number; lat: number } | null>(null)
+const showEmptyDeviceGuide = computed(() =>
+  Math.floor(viewportStore.zoom) >= 10 && performanceStore.visibleElementCount === 0,
+)
+const emptyDeviceGuideText = computed(() =>
+  regionStore.regionsList.length > 0
+    ? 'Showing city summaries as guides. Zoom out or pan toward a highlighted area.'
+    : 'Zoom out or pan toward an area with region summaries.',
+)
 
 function handleClick(id: string, event?: PointerEvent) {
   if (event?.ctrlKey || event?.metaKey) {
@@ -48,6 +76,7 @@ function handleHover(id: string | null) {
 
 const { layers } = useDeckLayers(handleClick, handleHover)
 const { loadVisibleTiles } = useTileLoader()
+const { loadRegionSummaries, dispose: disposeRegionLoader } = useRegionLoader()
 
 function syncViewport() {
   if (!map) return
@@ -75,6 +104,10 @@ function flyTo(lng: number, lat: number, zoom?: number) {
   })
 }
 
+function onOverviewNavigate(position: { lng: number; lat: number }) {
+  flyTo(position.lng, position.lat, map?.getZoom())
+}
+
 // Expose flyTo for parent components
 defineExpose({ flyTo })
 
@@ -92,6 +125,9 @@ onMounted(() => {
     style: 'mapbox://styles/mapbox/dark-v11',
     center: [viewportStore.center.lng, viewportStore.center.lat],
     zoom: viewportStore.zoom,
+    projection: 'mercator',
+    pitch: 0,
+    bearing: 0,
   })
 
   overlay = new MapboxOverlay({
@@ -103,8 +139,12 @@ onMounted(() => {
   map.addControl(new mapboxgl.NavigationControl(), 'top-right')
 
   map.on('moveend', syncViewport)
+  map.on('mousemove', (event) => {
+    mousePosition.value = { lng: event.lngLat.lng, lat: event.lngLat.lat }
+  })
   map.on('load', () => {
     syncViewport()
+    loadRegionSummaries()
     loadVisibleTiles()
   })
 
@@ -114,6 +154,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  disposeRegionLoader()
   map?.remove()
   map = null
   overlay = null
@@ -136,5 +177,32 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.empty-device-guide {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 5;
+  display: grid;
+  gap: 4px;
+  max-width: 340px;
+  padding: 12px 14px;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.86);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  color: #cbd5e1;
+  pointer-events: none;
+}
+
+.empty-device-guide strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.empty-device-guide span {
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

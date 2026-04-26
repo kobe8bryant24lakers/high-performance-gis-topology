@@ -1,0 +1,23 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="switch-shell" x1="14" y1="19" x2="50" y2="45" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#23B7A4"/>
+      <stop offset="1" stop-color="#15514D"/>
+    </linearGradient>
+  </defs>
+  <path d="M13 24.5L18 19H48.5L52 23.5V41.5L47.5 45.5H16L12 41.5V28L13 24.5Z" fill="url(#switch-shell)"/>
+  <rect x="13.5" y="20.5" width="37" height="24" rx="5.5" fill="#121C23" fill-opacity="0.95" stroke="#A5F1E4" stroke-width="1.5"/>
+  <g fill="#5DE1D0">
+    <rect x="19" y="27" width="4.5" height="3.5" rx="1"/>
+    <rect x="25" y="27" width="4.5" height="3.5" rx="1"/>
+    <rect x="31" y="27" width="4.5" height="3.5" rx="1"/>
+    <rect x="37" y="27" width="4.5" height="3.5" rx="1"/>
+    <rect x="19" y="33" width="4.5" height="3.5" rx="1"/>
+    <rect x="25" y="33" width="4.5" height="3.5" rx="1"/>
+    <rect x="31" y="33" width="4.5" height="3.5" rx="1"/>
+    <rect x="37" y="33" width="4.5" height="3.5" rx="1"/>
+  </g>
+  <rect x="44" y="27" width="4" height="10" rx="1.5" fill="#B5FFF4"/>
+  <circle cx="19" cy="40" r="1.5" fill="#8BF0C6"/>
+  <circle cx="24" cy="40" r="1.5" fill="#9AD7FF"/>
+</svg>

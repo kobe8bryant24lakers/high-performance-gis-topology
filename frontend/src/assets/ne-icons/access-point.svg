@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ap-shell" x1="18" y1="16" x2="46" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E6A93D"/>
+      <stop offset="1" stop-color="#7A5920"/>
+    </linearGradient>
+  </defs>
+  <path d="M22 17H41.5L46 21.5V40L41.5 45H22.5L18 40V21L22 17Z" fill="url(#ap-shell)"/>
+  <rect x="18.5" y="17.5" width="27" height="27" rx="9" fill="#15161A" fill-opacity="0.95" stroke="#FFE0A3" stroke-width="1.5"/>
+  <circle cx="32" cy="31" r="4" fill="#E6A93D"/>
+  <path d="M24.5 29.5C26.3 26.8 29.2 25 32 25C34.8 25 37.7 26.8 39.5 29.5" stroke="#FFD891" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M21.5 25.5C24.2 21.8 28 19.5 32 19.5C36 19.5 39.8 21.8 42.5 25.5" stroke="#FFD891" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M24.5 35.5C26.3 38.2 29.2 40 32 40C34.8 40 37.7 38.2 39.5 35.5" stroke="#B88931" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

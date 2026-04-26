@@ -3,9 +3,6 @@
     <div class="toolbar-title">GIS Topology Viewer</div>
     <div class="toolbar-controls">
       <SearchInput @select-result="$emit('flyTo', $event)" />
-      <button class="view-toggle" @click="viewModeStore.toggle()">
-        {{ viewModeStore.isSchematic ? 'Map' : 'Schematic' }}
-      </button>
     </div>
     <div class="toolbar-spacer" />
     <div v-if="filterStore.hasActiveFilters" class="filter-chips">
@@ -16,9 +13,15 @@
       <span
         v-for="t in filterStore.criteria.types"
         :key="'type-' + t"
-        class="chip"
+        class="chip chip-type"
       >
-        {{ t }}
+        <img
+          :src="getNeIconSpec(t).iconUrl"
+          :alt="getNeIconSpec(t).label"
+          class="chip-icon"
+          data-test="active-type-chip-icon"
+        />
+        {{ getNeIconSpec(t).label }}
         <button class="chip-remove" @click="filterStore.toggleType(t)">&times;</button>
       </span>
       <span
@@ -34,16 +37,15 @@
 </template>
 
 <script setup lang="ts">
-import { useViewModeStore } from '@/stores/view-mode'
 import { useFilterStore } from '@/stores/filter'
 import SearchInput from '@/components/SearchInput.vue'
+import { getNeIconSpec } from '@/constants/ne-icons'
 import type { NetworkElement } from '@/types/topology'
 
 defineEmits<{
   flyTo: [element: NetworkElement]
 }>()
 
-const viewModeStore = useViewModeStore()
 const filterStore = useFilterStore()
 </script>
 
@@ -71,20 +73,6 @@ const filterStore = useFilterStore()
   gap: 8px;
 }
 
-.view-toggle {
-  padding: 4px 12px;
-  border: 1px solid #45475a;
-  border-radius: 4px;
-  background: #1e1e2e;
-  color: #cdd6f4;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.view-toggle:hover {
-  background: #313244;
-}
-
 .toolbar-spacer {
   flex: 1;
 }
@@ -103,6 +91,15 @@ const filterStore = useFilterStore()
   border-radius: 12px;
   font-size: 12px;
   color: #cdd6f4;
+}
+
+.chip-type {
+  background: #273341;
+}
+
+.chip-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .chip-search {

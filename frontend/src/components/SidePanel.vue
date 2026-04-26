@@ -31,7 +31,15 @@
           <dt>ID</dt>
           <dd>{{ element.id }}</dd>
           <dt>Type</dt>
-          <dd>{{ element.type }}</dd>
+          <dd class="type-detail">
+            <img
+              :src="getNeIconSpec(element.type).iconUrl"
+              :alt="getNeIconSpec(element.type).label"
+              class="detail-type-icon"
+              data-test="detail-type-icon"
+            />
+            <span>{{ getNeIconSpec(element.type).label }}</span>
+          </dd>
           <dt>Coordinates</dt>
           <dd>{{ element.lng.toFixed(4) }}, {{ element.lat.toFixed(4) }}</dd>
           <dt>Version</dt>
@@ -74,8 +82,14 @@
         class="search-result"
         @click="$emit('flyTo', el)"
       >
+        <img
+          :src="getNeIconSpec(el.type).iconUrl"
+          :alt="getNeIconSpec(el.type).label"
+          class="search-type-icon"
+          data-test="search-type-icon"
+        />
         <span class="result-label">{{ el.label }}</span>
-        <span class="result-type">{{ el.type }}</span>
+        <span class="result-type">{{ getNeIconSpec(el.type).label }}</span>
       </div>
     </div>
 
@@ -95,6 +109,7 @@ import FilterPanel from '@/components/FilterPanel.vue'
 import BreadcrumbTrail from '@/components/BreadcrumbTrail.vue'
 import { useExplorationStore } from '@/stores/exploration'
 import { expandNeighbors } from '@/composables/use-exploration'
+import { getNeIconSpec } from '@/constants/ne-icons'
 import type { NetworkElement } from '@/types/topology'
 
 defineEmits<{
@@ -230,6 +245,18 @@ function onBreadcrumbNavigate(id: string) {
   word-break: break-all;
 }
 
+.type-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-type-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
 .properties {
   margin-top: 16px;
 }
@@ -242,6 +269,8 @@ function onBreadcrumbNavigate(id: string) {
 .search-result {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   padding: 8px 0;
   border-bottom: 1px solid #313244;
   cursor: pointer;
@@ -256,6 +285,13 @@ function onBreadcrumbNavigate(id: string) {
 
 .result-label {
   color: #cdd6f4;
+  flex: 1;
+}
+
+.search-type-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .result-type {

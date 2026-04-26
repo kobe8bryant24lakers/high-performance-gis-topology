@@ -73,6 +73,25 @@ SELECT
     '{}'::jsonb
 FROM generate_series(10, 999999) AS i;
 
+-- Assign every element to its containing region via PostGIS so the regions table
+-- (V2__add_regions.sql) remains the single source of truth for the grid layout.
+UPDATE network_elements ne SET
+    country_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'country' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    ),
+    province_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'province' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    ),
+    city_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'city' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    );
+
 -- ── 10 fixed links establishing el-0 neighbourhood ───────────────────────────
 -- depth-1 from el-0: el-1, el-2, el-10, el-20
 -- depth-2 from el-0: el-30, el-40, el-50, el-60

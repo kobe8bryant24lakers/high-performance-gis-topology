@@ -72,6 +72,7 @@ public class SeedService {
             lcgSeed = 42L;  // Starting seed matches TypeScript resetSeed(42)
             insertElements(elementCount);
             insertLinks(elementCount, linkCount);
+            elementMapper.assignRegionsByGeometry();
             log.info("Seeding complete");
         } catch (RuntimeException ex) {
             seeding.set(false);   // release before Spring rolls back so flag is consistent
@@ -84,6 +85,9 @@ public class SeedService {
     /**
      * Generates and inserts elements in chunks of BATCH_SIZE.
      * Each chunk is committed independently — the full list is never in memory.
+     * Region IDs are backfilled by {@link #seed} via {@code assignRegionsByGeometry}
+     * after all rows are inserted, so the regions table is the single source of truth
+     * for the country/province/city grid.
      */
     private void insertElements(int elementCount) {
         for (int i = 0; i < elementCount; i += BATCH_SIZE) {
