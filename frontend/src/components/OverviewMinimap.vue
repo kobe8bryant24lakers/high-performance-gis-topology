@@ -1,15 +1,15 @@
 <template>
   <aside class="overview-minimap" data-test="overview-minimap">
     <div class="overview-title">
-      <span>Regional density</span>
-      <small>{{ regions.length }} city areas</small>
+      <span>Device density</span>
+      <small>{{ compactNumber(heatmapMeta.totalCount) }} devices</small>
     </div>
     <svg
       class="overview-svg"
       data-test="overview-minimap-svg"
       :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
       role="img"
-      aria-label="City-level aggregate device density overview minimap"
+      aria-label="Real device density overview minimap"
       @click="navigateFromPointer"
       @pointerdown="startDrag"
       @pointermove="continueDrag"
@@ -18,7 +18,7 @@
     >
       <defs>
         <filter id="overview-heatmap-soften" x="-8%" y="-8%" width="116%" height="116%">
-          <feGaussianBlur stdDeviation="1.6" />
+          <feGaussianBlur stdDeviation="0.8" />
         </filter>
       </defs>
       <rect class="overview-bg" :width="WIDTH" :height="HEIGHT" rx="10" />
@@ -58,24 +58,34 @@
         <text :x="Math.min(WIDTH - 27, mousePoint.x + 7)" :y="Math.max(9, mousePoint.y - 4)">cursor</text>
       </g>
     </svg>
-    <div class="overview-help">Aggregate city heatmap; cursor is location only</div>
+    <div class="overview-help">Real device heatmap; cursor is location only</div>
   </aside>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RegionService } from '@/api/region-service'
+import { HeatmapService } from '@/api/heatmap-service'
 import { useFilterStore } from '@/stores/filter'
-import type { RegionSummary } from '@/types/topology'
+import type { DeviceHeatmapCell } from '@/types/topology'
 import type { ViewportBounds } from '@/stores/viewport'
 
 const WIDTH = 240
 const HEIGHT = 120
 const HEATMAP_COLUMNS = 48
 const HEATMAP_ROWS = 24
-const HEATMAP_SPREAD_PX = 11
-const HEATMAP_MIN_INTENSITY = 0.035
+const HEATMAP_MIN_INTENSITY = 0.06
 const WORLD_BOUNDS: ViewportBounds = { west: -180, south: -85, east: 180, north: 85 }
+const HEATMAP_KERNEL = [
+  { dx: 0, dy: 0, weight: 1 },
+  { dx: -1, dy: 0, weight: 0.38 },
+  { dx: 1, dy: 0, weight: 0.38 },
+  { dx: 0, dy: -1, weight: 0.38 },
+  { dx: 0, dy: 1, weight: 0.38 },
+  { dx: -1, dy: -1, weight: 0.18 },
+  { dx: 1, dy: -1, weight: 0.18 },
+  { dx: -1, dy: 1, weight: 0.18 },
+  { dx: 1, dy: 1, weight: 0.18 },
+]
 
 type HeatmapCell = {
   id: string
@@ -97,8 +107,14 @@ const emit = defineEmits<{
 }>()
 
 const filterStore = useFilterStore()
-const regionService = new RegionService()
-const regions = ref<RegionSummary[]>([])
+const heatmapService = new HeatmapService()
+const deviceHeatmapCells = ref<DeviceHeatmapCell[]>([])
+const heatmapMeta = ref({
+  columns: HEATMAP_COLUMNS,
+  rows: HEATMAP_ROWS,
+  maxCount: 0,
+  totalCount: 0,
+})
 const isDragging = ref(false)
 
 function project(lng: number, lat: number): { x: number; y: number } {
@@ -129,35 +145,46 @@ const graticuleLines = computed(() => {
 })
 
 const heatmapCells = computed<HeatmapCell[]>(() => {
-  if (regions.value.length === 0) return []
+  if (deviceHeatmapCells.value.length === 0 || heatmapMeta.value.maxCount <= 0) return []
 
-  const cellWidth = WIDTH / HEATMAP_COLUMNS
-  const cellHeight = HEIGHT / HEATMAP_ROWS
-  const maxCount = Math.max(1, ...regions.value.map((region) => region.totalCount))
-  const sources = regions.value.map((region) => ({
-    point: project(region.centroidLng, region.centroidLat),
-    weight: Math.log1p(region.totalCount) / Math.log1p(maxCount),
-  }))
+  const columns = Math.max(1, heatmapMeta.value.columns)
+  const rows = Math.max(1, heatmapMeta.value.rows)
+  const cellWidth = WIDTH / columns
+  const cellHeight = HEIGHT / rows
+  const maxCount = Math.max(1, heatmapMeta.value.maxCount)
+  const baseGrid = new Float32Array(columns * rows)
+
+  for (const cell of deviceHeatmapCells.value) {
+    if (cell.x < 0 || cell.x >= columns || cell.y < 0 || cell.y >= rows) continue
+    const index = cell.y * columns + cell.x
+    baseGrid[index] = Math.max(
+      baseGrid[index] ?? 0,
+      Math.log1p(cell.count) / Math.log1p(maxCount),
+    )
+  }
+
   const rawCells: Array<Omit<HeatmapCell, 'fill' | 'opacity'> & { intensity: number }> = []
   let maxIntensity = 0
-
-  for (let row = 0; row < HEATMAP_ROWS; row += 1) {
-    for (let col = 0; col < HEATMAP_COLUMNS; col += 1) {
-      const x = col * cellWidth
-      const y = row * cellHeight
-      const centerX = x + cellWidth / 2
-      const centerY = y + cellHeight / 2
-      const intensity = sources.reduce((sum, source) => {
-        const dx = centerX - source.point.x
-        const dy = centerY - source.point.y
-        const falloff = Math.exp(-(dx * dx + dy * dy) / (2 * HEATMAP_SPREAD_PX * HEATMAP_SPREAD_PX))
-        return sum + source.weight * falloff
-      }, 0)
-
-      if (intensity > maxIntensity) {
-        maxIntensity = intensity
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
+      let intensity = 0
+      for (const kernel of HEATMAP_KERNEL) {
+        const sourceX = x + kernel.dx
+        const sourceY = y + kernel.dy
+        if (sourceX < 0 || sourceX >= columns || sourceY < 0 || sourceY >= rows) continue
+        intensity += (baseGrid[sourceY * columns + sourceX] ?? 0) * kernel.weight
       }
-      rawCells.push({ id: `${row}-${col}`, x, y, width: cellWidth, height: cellHeight, intensity })
+      if (intensity > 0) {
+        maxIntensity = Math.max(maxIntensity, intensity)
+        rawCells.push({
+          id: `${y}-${x}`,
+          x: x * cellWidth,
+          y: y * cellHeight,
+          width: cellWidth + 0.35,
+          height: cellHeight + 0.35,
+          intensity,
+        })
+      }
     }
   }
 
@@ -188,6 +215,11 @@ function heatmapOpacity(intensity: number): number {
   return Math.min(0.92, Math.max(0.14, intensity * 0.82))
 }
 
+function compactNumber(value: number): string {
+  if (value < 1000) return `${value}`
+  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
 const viewportRect = computed(() => {
   if (!props.bounds) return null
   const westNorth = project(props.bounds.west, props.bounds.north)
@@ -207,15 +239,22 @@ const mousePoint = computed(() =>
 )
 
 async function loadDistribution() {
-  const generation = regionService.nextGeneration()
-  const response = await regionService.fetchRegionSummary({
-    z: 8,
+  const generation = heatmapService.nextGeneration()
+  const response = await heatmapService.fetchDeviceHeatmap({
     bounds: WORLD_BOUNDS,
+    columns: HEATMAP_COLUMNS,
+    rows: HEATMAP_ROWS,
     types: filterStore.criteria.types,
     propertyFilters: filterStore.criteria.propertyFilters,
   }, generation)
   if (response) {
-    regions.value = response.regions
+    deviceHeatmapCells.value = response.cells
+    heatmapMeta.value = {
+      columns: response.columns,
+      rows: response.rows,
+      maxCount: response.maxCount,
+      totalCount: response.totalCount,
+    }
   }
 }
 
@@ -260,7 +299,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  regionService.cancel()
+  heatmapService.cancel()
 })
 </script>
 

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.topology.gis.shared.mapper.HeatmapMapper">
+
+    <select id="findDeviceHeatmapCells" resultType="com.topology.gis.heatmap.dto.HeatmapCellRow">
+        WITH binned AS (
+            SELECT
+                LEAST(
+                    #{columns} - 1,
+                    GREATEST(0, FLOOR(((ne.lng - #{west}) / (#{east} - #{west})) * #{columns})::integer)
+                ) AS x,
+                LEAST(
+                    #{rows} - 1,
+                    GREATEST(0, FLOOR(((#{north} - ne.lat) / (#{north} - #{south})) * #{rows})::integer)
+                ) AS y
+            FROM network_elements ne
+            WHERE ne.location &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
+              AND ne.lng BETWEEN #{west} AND #{east}
+              AND ne.lat BETWEEN #{south} AND #{north}
+              AND (#{types}::text[] IS NULL OR ne.type = ANY(#{types}::text[]))
+              AND (#{propFilter}::text IS NULL OR ne.properties @&gt; #{propFilter}::jsonb)
+        )
+        SELECT x, y, COUNT(*) AS count
+        FROM binned
+        GROUP BY x, y
+        ORDER BY y, x
+    </select>
+</mapper>

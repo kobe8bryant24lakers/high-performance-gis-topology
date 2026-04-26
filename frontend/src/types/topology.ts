@@ -68,6 +68,12 @@ export interface RegionVirtualLink {
   count: number
 }
 
+export interface DeviceHeatmapCell {
+  x: number
+  y: number
+  count: number
+}
+
 // --- API Response Types ---
 
 export interface TileElementsResponse {
@@ -88,6 +94,19 @@ export interface RegionSummaryResponse {
   level: RegionLevel | null
   regions: RegionSummary[]
   links: RegionVirtualLink[]
+  generation: number
+}
+
+export interface DeviceHeatmapResponse {
+  west: number
+  south: number
+  east: number
+  north: number
+  columns: number
+  rows: number
+  maxCount: number
+  totalCount: number
+  cells: DeviceHeatmapCell[]
   generation: number
 }
 

@@ -3,45 +3,35 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import OverviewMinimap from '@/components/OverviewMinimap.vue'
 
-const fetchRegionSummary = vi.fn()
+const fetchDeviceHeatmap = vi.fn()
 
-vi.mock('@/api/region-service', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/region-service')>()
+vi.mock('@/api/heatmap-service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/heatmap-service')>()
   return {
     ...actual,
-    RegionService: class {
+    HeatmapService: class {
       nextGeneration = vi.fn(() => 1)
       currentGeneration = vi.fn(() => 1)
-      fetchRegionSummary = fetchRegionSummary
+      fetchDeviceHeatmap = fetchDeviceHeatmap
       cancel = vi.fn()
     },
   }
 })
 
-function citySummary() {
+function deviceHeatmap() {
   return {
-    level: 'city' as const,
+    west: -180,
+    south: -85,
+    east: 180,
+    north: 85,
+    columns: 48,
+    rows: 24,
+    maxCount: 20,
+    totalCount: 30,
     generation: 1,
-    links: [],
-    regions: [
-      {
-        id: 'city-a',
-        level: 'city' as const,
-        name: 'City A',
-        parentId: 'province-a',
-        centroidLng: 0,
-        centroidLat: 45,
-        bbox: { west: -1, south: 44, east: 1, north: 46 },
-        totalCount: 250,
-        elementTypes: {
-          firewall: 20,
-          router: 40,
-          switch: 70,
-          server: 50,
-          'access-point': 70,
-        },
-        internalLinkCount: 12,
-      },
+    cells: [
+      { x: 24, y: 6, count: 20 },
+      { x: 25, y: 7, count: 10 },
     ],
   }
 }
@@ -49,11 +39,11 @@ function citySummary() {
 describe('OverviewMinimap', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    fetchRegionSummary.mockReset()
-    fetchRegionSummary.mockResolvedValue(citySummary())
+    fetchDeviceHeatmap.mockReset()
+    fetchDeviceHeatmap.mockResolvedValue(deviceHeatmap())
   })
 
-  it('renders global city heatmap, viewport bounds, and mouse position', async () => {
+  it('renders global real-device heatmap, viewport bounds, and mouse position', async () => {
     const wrapper = mount(OverviewMinimap, {
       props: {
         bounds: { west: -10, south: 40, east: 10, north: 50 },
@@ -62,19 +52,21 @@ describe('OverviewMinimap', () => {
     })
     await flushPromises()
 
-    expect(fetchRegionSummary).toHaveBeenCalledWith(expect.objectContaining({
-      z: 8,
+    expect(fetchDeviceHeatmap).toHaveBeenCalledWith(expect.objectContaining({
       bounds: { west: -180, south: -85, east: 180, north: 85 },
+      columns: 48,
+      rows: 24,
     }), expect.any(Number))
-    const heatmapCell = wrapper.find('[data-test="overview-heatmap-cell"]')
-    expect(heatmapCell.exists()).toBe(true)
-    expect(Number(heatmapCell.attributes('width'))).toBeGreaterThan(0)
-    expect(Number(heatmapCell.attributes('height'))).toBeGreaterThan(0)
+    const heatmapCells = wrapper.findAll('[data-test="overview-heatmap-cell"]')
+    expect(heatmapCells.length).toBeGreaterThan(2)
+    expect(Number(heatmapCells[0].attributes('width'))).toBeGreaterThan(0)
+    expect(Number(heatmapCells[0].attributes('height'))).toBeGreaterThan(0)
     expect(wrapper.find('[data-test="overview-density-point"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="overview-viewport"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="overview-mouse"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Regional density')
-    expect(wrapper.text()).toContain('Aggregate city heatmap; cursor is location only')
+    expect(wrapper.text()).toContain('Device density')
+    expect(wrapper.text()).toContain('30 devices')
+    expect(wrapper.text()).toContain('Real device heatmap; cursor is location only')
   })
 
   it('emits navigate coordinates from minimap clicks', async () => {
