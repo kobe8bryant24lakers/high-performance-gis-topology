@@ -9,6 +9,8 @@ import { useViewportStore } from '@/stores/viewport'
 const mapConstructor = vi.fn()
 const loadVisibleTiles = vi.fn()
 const loadRegionSummaries = vi.fn()
+const flyToMock = vi.fn()
+const mapHandlers = new Map<string, (...args: any[]) => void>()
 
 vi.mock('@deck.gl/mapbox', () => ({
   MapboxOverlay: class {
@@ -35,7 +37,9 @@ vi.mock('mapbox-gl', () => {
     }
 
     addControl = vi.fn()
+    flyTo = flyToMock
     on = vi.fn((event: string, handler: () => void) => {
+      mapHandlers.set(event, handler)
       if (event === 'load') handler()
     })
     remove = vi.fn()
@@ -65,6 +69,8 @@ describe('MapView', () => {
     mapConstructor.mockClear()
     loadVisibleTiles.mockClear()
     loadRegionSummaries.mockClear()
+    flyToMock.mockClear()
+    mapHandlers.clear()
   })
 
   it('initializes Mapbox as a flat 2D mercator map', () => {
@@ -98,5 +104,44 @@ describe('MapView', () => {
     await nextTick()
 
     expect(wrapper.find('[data-test="empty-device-guide"]').exists()).toBe(true)
+  })
+
+  it('renders overview minimap and routes minimap navigation to the main map', async () => {
+    const wrapper = mount(MapView, {
+      global: {
+        stubs: {
+          OverviewMinimap: {
+            props: ['bounds', 'mousePosition'],
+            emits: ['navigate'],
+            template: '<button data-test="overview-minimap-stub" @click="$emit(\'navigate\', { lng: 12, lat: 34 })" />',
+          },
+        },
+      },
+    })
+
+    await wrapper.find('[data-test="overview-minimap-stub"]').trigger('click')
+
+    expect(flyToMock).toHaveBeenCalledWith(expect.objectContaining({
+      center: [12, 34],
+      zoom: 2,
+    }))
+  })
+
+  it('passes main map mouse coordinates to the overview minimap', async () => {
+    const wrapper = mount(MapView, {
+      global: {
+        stubs: {
+          OverviewMinimap: {
+            props: ['bounds', 'mousePosition'],
+            template: '<div data-test="overview-minimap-stub">{{ mousePosition?.lng }},{{ mousePosition?.lat }}</div>',
+          },
+        },
+      },
+    })
+
+    mapHandlers.get('mousemove')?.({ lngLat: { lng: 12.5, lat: 34.5 } })
+    await nextTick()
+
+    expect(wrapper.find('[data-test="overview-minimap-stub"]').text()).toContain('12.5,34.5')
   })
 })

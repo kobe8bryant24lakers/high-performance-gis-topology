@@ -2,6 +2,11 @@
   <div ref="containerRef" class="map-view">
     <div ref="mapRef" class="map-container" />
     <canvas ref="deckRef" class="deck-canvas" />
+    <OverviewMinimap
+      :bounds="viewportStore.bounds"
+      :mouse-position="mousePosition"
+      @navigate="onOverviewNavigate"
+    />
     <div
       v-if="showEmptyDeviceGuide"
       class="empty-device-guide"
@@ -26,6 +31,7 @@ import { useRegionStore } from '@/stores/regions'
 import { useTileLoader } from '@/composables/use-tile-loader'
 import { useRegionLoader } from '@/composables/use-region-loader'
 import { useDeckLayers } from '@/composables/use-deck-layers'
+import OverviewMinimap from '@/components/OverviewMinimap.vue'
 
 const emit = defineEmits<{
   elementClick: [id: string]
@@ -44,6 +50,7 @@ let map: mapboxgl.Map | null = null
 let overlay: MapboxOverlay | null = null
 
 const hoveredId = ref<string | null>(null)
+const mousePosition = ref<{ lng: number; lat: number } | null>(null)
 const showEmptyDeviceGuide = computed(() =>
   Math.floor(viewportStore.zoom) >= 10 && performanceStore.visibleElementCount === 0,
 )
@@ -97,6 +104,10 @@ function flyTo(lng: number, lat: number, zoom?: number) {
   })
 }
 
+function onOverviewNavigate(position: { lng: number; lat: number }) {
+  flyTo(position.lng, position.lat, map?.getZoom())
+}
+
 // Expose flyTo for parent components
 defineExpose({ flyTo })
 
@@ -128,6 +139,9 @@ onMounted(() => {
   map.addControl(new mapboxgl.NavigationControl(), 'top-right')
 
   map.on('moveend', syncViewport)
+  map.on('mousemove', (event) => {
+    mousePosition.value = { lng: event.lngLat.lng, lat: event.lngLat.lat }
+  })
   map.on('load', () => {
     syncViewport()
     loadRegionSummaries()
