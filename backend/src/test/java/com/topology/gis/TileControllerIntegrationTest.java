@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TileControllerIntegrationTest extends BaseIntegrationTest {
 
+    private static final String SAN_FRANCISCO_Z14_TILE = "/api/topology/tiles/14/2620/6332";
+    private static final String SAN_FRANCISCO_Z8_TILE = "/api/topology/tiles/8/40/98";
+
     @Autowired
     private SeedService seedService;
     @Autowired
@@ -39,7 +42,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     void tileElements_atHighZoom_returnsElements() {
         // z=14 allows firewall, router, switch, server (not access-point)
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/elements", TileElementsResponse.class);
+                SAN_FRANCISCO_Z14_TILE + "/elements", TileElementsResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(resp.getBody()).isNotNull();
@@ -52,7 +55,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     void tileElements_atLowZoom_returnsOnlyZoomAllowedTypes() {
         // z=8 allows only firewall and router — no clusters, no switches/servers/access-points
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/8/128/85/elements", TileElementsResponse.class);
+                SAN_FRANCISCO_Z8_TILE + "/elements", TileElementsResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         TileElementsResponse body = resp.getBody();
@@ -66,9 +69,9 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     void tileElements_withTypeFilter_reducesResults() {
         // Seed uses 5 types; filtering to one type should return fewer or equal results
         ResponseEntity<TileElementsResponse> all = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/elements", TileElementsResponse.class);
+                SAN_FRANCISCO_Z14_TILE + "/elements", TileElementsResponse.class);
         ResponseEntity<TileElementsResponse> filtered = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/elements?types=router", TileElementsResponse.class);
+                SAN_FRANCISCO_Z14_TILE + "/elements?types=router", TileElementsResponse.class);
 
         assertThat(all.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(filtered.getStatusCode().is2xxSuccessful()).isTrue();
@@ -79,7 +82,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void tileLinks_returnsLinksAndStubs() {
         ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/links", TileLinksResponse.class);
+                SAN_FRANCISCO_Z14_TILE + "/links", TileLinksResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(resp.getBody()).isNotNull();
@@ -90,7 +93,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void tileLinks_excludesStubsOutsideZoomAllowedTypes() {
         ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/links", TileLinksResponse.class);
+                SAN_FRANCISCO_Z14_TILE + "/links", TileLinksResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         TileLinksResponse body = resp.getBody();
@@ -111,7 +114,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
     void tileElements_rejectsOversizedTypeToken() {
         String longType = "a".repeat(65);
         ResponseEntity<String> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/14/8192/5460/elements?types=" + longType, String.class);
+                SAN_FRANCISCO_Z14_TILE + "/elements?types=" + longType, String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
@@ -127,8 +130,8 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         visibleFirewall.setId("visible-fw");
         visibleFirewall.setType("firewall");
         visibleFirewall.setLabel("visible-fw");
-        visibleFirewall.setLng(0.5);
-        visibleFirewall.setLat(51.1);
+        visibleFirewall.setLng(-122.6);
+        visibleFirewall.setLat(37.9);
         visibleFirewall.setVersion(1);
         visibleFirewall.setUpdatedAt(now);
         visibleFirewall.setProperties(Map.of());
@@ -138,8 +141,8 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         hiddenSwitch.setId("hidden-sw");
         hiddenSwitch.setType("switch");
         hiddenSwitch.setLabel("hidden-sw");
-        hiddenSwitch.setLng(2.2);
-        hiddenSwitch.setLat(51.1);
+        hiddenSwitch.setLng(-121.9);
+        hiddenSwitch.setLat(37.9);
         hiddenSwitch.setVersion(1);
         hiddenSwitch.setUpdatedAt(now);
         hiddenSwitch.setProperties(Map.of());
@@ -157,7 +160,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         linkMapper.insert(crossTypeLink);
 
         ResponseEntity<TileLinksResponse> resp = restTemplate.getForEntity(
-                "/api/topology/tiles/8/128/85/links", TileLinksResponse.class);
+                SAN_FRANCISCO_Z8_TILE + "/links", TileLinksResponse.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         TileLinksResponse body = resp.getBody();

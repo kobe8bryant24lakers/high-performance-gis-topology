@@ -1,6 +1,12 @@
 import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
 
 const ELEMENT_TYPES = ['router', 'switch', 'server', 'firewall', 'access-point']
+const CALIFORNIA_BOUNDS = {
+  west: -124.482003,
+  east: -114.131211,
+  south: 32.528832,
+  north: 42.009518,
+}
 
 let seed = 42
 function seededRandom(): number {
@@ -15,8 +21,8 @@ export function resetSeed(s = 42): void {
 export function generateElements(count: number): NetworkElement[] {
   const elements: NetworkElement[] = []
   for (let i = 0; i < count; i++) {
-    const lng = seededRandom() * 360 - 180
-    const lat = seededRandom() * 180 - 90
+    const lng = CALIFORNIA_BOUNDS.west + seededRandom() * (CALIFORNIA_BOUNDS.east - CALIFORNIA_BOUNDS.west)
+    const lat = CALIFORNIA_BOUNDS.south + seededRandom() * (CALIFORNIA_BOUNDS.north - CALIFORNIA_BOUNDS.south)
     const typeIndex = Math.floor(seededRandom() * ELEMENT_TYPES.length)
     const elementType = ELEMENT_TYPES[typeIndex] ?? 'router'
     elements.push({

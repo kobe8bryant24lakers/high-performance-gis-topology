@@ -13,6 +13,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ElementControllerIntegrationTest extends BaseIntegrationTest {
 
+    private static final double CALIFORNIA_WEST = -124.482003;
+    private static final double CALIFORNIA_EAST = -114.131211;
+    private static final double CALIFORNIA_SOUTH = 32.528832;
+    private static final double CALIFORNIA_NORTH = 42.009518;
+
     @Autowired
     private SeedService seedService;
 
@@ -29,8 +34,8 @@ class ElementControllerIntegrationTest extends BaseIntegrationTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).isNotNull();
         assertThat(resp.getBody().id()).isEqualTo("el-0");
-        assertThat(resp.getBody().lng()).isBetween(-180.0, 180.0);
-        assertThat(resp.getBody().lat()).isBetween(-90.0, 90.0);
+        assertThat(resp.getBody().lng()).isBetween(CALIFORNIA_WEST, CALIFORNIA_EAST);
+        assertThat(resp.getBody().lat()).isBetween(CALIFORNIA_SOUTH, CALIFORNIA_NORTH);
     }
 
     @Test

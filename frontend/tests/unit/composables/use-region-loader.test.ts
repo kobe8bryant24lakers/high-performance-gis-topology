@@ -88,8 +88,8 @@ describe('useRegionLoader', () => {
     performanceStore.visibleElementCount = 0
     viewportStore.updateViewport({
       zoom: 12,
-      center: { lng: 0.011, lat: 51.337 },
-      bounds: { west: -0.2, south: 51.1, east: 0.2, north: 51.5 },
+      center: { lng: -122.4194, lat: 37.7749 },
+      bounds: { west: -122.6, south: 37.6, east: -122.2, north: 38.0 },
     })
     fetchRegionSummary.mockResolvedValueOnce({
       level: 'city',

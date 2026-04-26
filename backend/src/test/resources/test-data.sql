@@ -8,10 +8,11 @@
 --   firewall     :  5%  ( ~50 000)  — perimeter / zone firewalls
 --
 -- Element layout:
---   el-0..el-9    : inside tile 14/8192/5460 (west=0.0, east=0.022°, south=51.331°, north=51.344°)
---                   and tile 8/128/85 (west=0.0, east=1.406°, south=50.736°, north=51.618°)
+--   el-0..el-9    : inside tile 14/2620/6332 near San Francisco
+--                   (west=-122.432°, east=-122.410°, south=37.771°, north=37.788°)
+--                   and tile 8/40/98 (west=-123.750°, east=-122.344°, south=37.719°, north=38.823°)
 --                   mixed types — supports all tile + neighbour integration tests.
---   el-10..el-999 999 : globally distributed, type assigned by (i % 20) threshold.
+--   el-10..el-999 999 : distributed inside the California bounding box, type assigned by (i % 20) threshold.
 --
 -- Link layout:
 --   link-0..link-9      : fixed neighbour edges from el-0 (depth 1-3 reachable).
@@ -23,31 +24,31 @@ BEGIN;
 DELETE FROM topology_links;
 DELETE FROM network_elements;
 
--- ── 10 fixed elements inside tile 14/8192/5460 ───────────────────────────────
+-- ── 10 fixed elements inside tile 14/2620/6332 ───────────────────────────────
 INSERT INTO network_elements (id, type, label, lng, lat, version, updated_at, properties)
 VALUES
   -- 2 router, 3 switch, 1 server, 4 access-point (≈ pyramid ratios; 0 firewall by design)
-  ('el-0', 'router',       'router-0',        0.005, 51.334, 1, '2026-01-01 00:00:00+00', '{"index":0}'::jsonb),
-  ('el-1', 'router',       'router-1',        0.010, 51.337, 1, '2026-01-01 00:00:00+00', '{"index":1}'::jsonb),
-  ('el-2', 'access-point', 'access-point-2',  0.016, 51.341, 1, '2026-01-01 00:00:00+00', '{"index":2}'::jsonb),
-  ('el-3', 'switch',       'switch-3',        0.007, 51.332, 1, '2026-01-01 00:00:00+00', '{"index":3}'::jsonb),
-  ('el-4', 'switch',       'switch-4',        0.013, 51.339, 1, '2026-01-01 00:00:00+00', '{"index":4}'::jsonb),
-  ('el-5', 'server',       'server-5',        0.004, 51.333, 1, '2026-01-01 00:00:00+00', '{"index":5}'::jsonb),
-  ('el-6', 'access-point', 'access-point-6',  0.018, 51.342, 1, '2026-01-01 00:00:00+00', '{"index":6}'::jsonb),
-  ('el-7', 'access-point', 'access-point-7',  0.009, 51.336, 1, '2026-01-01 00:00:00+00', '{"index":7}'::jsonb),
-  ('el-8', 'access-point', 'access-point-8',  0.012, 51.338, 1, '2026-01-01 00:00:00+00', '{"index":8}'::jsonb),
-  ('el-9', 'switch',       'switch-9',        0.006, 51.335, 1, '2026-01-01 00:00:00+00', '{"index":9}'::jsonb);
+  ('el-0', 'router',       'router-0',       -122.4310, 37.7720, 1, '2026-01-01 00:00:00+00', '{"index":0}'::jsonb),
+  ('el-1', 'router',       'router-1',       -122.4280, 37.7740, 1, '2026-01-01 00:00:00+00', '{"index":1}'::jsonb),
+  ('el-2', 'access-point', 'access-point-2', -122.4245, 37.7770, 1, '2026-01-01 00:00:00+00', '{"index":2}'::jsonb),
+  ('el-3', 'switch',       'switch-3',       -122.4300, 37.7715, 1, '2026-01-01 00:00:00+00', '{"index":3}'::jsonb),
+  ('el-4', 'switch',       'switch-4',       -122.4215, 37.7800, 1, '2026-01-01 00:00:00+00', '{"index":4}'::jsonb),
+  ('el-5', 'server',       'server-5',       -122.4270, 37.7730, 1, '2026-01-01 00:00:00+00', '{"index":5}'::jsonb),
+  ('el-6', 'access-point', 'access-point-6', -122.4180, 37.7840, 1, '2026-01-01 00:00:00+00', '{"index":6}'::jsonb),
+  ('el-7', 'access-point', 'access-point-7', -122.4250, 37.7750, 1, '2026-01-01 00:00:00+00', '{"index":7}'::jsonb),
+  ('el-8', 'access-point', 'access-point-8', -122.4220, 37.7785, 1, '2026-01-01 00:00:00+00', '{"index":8}'::jsonb),
+  ('el-9', 'switch',       'switch-9',       -122.4290, 37.7735, 1, '2026-01-01 00:00:00+00', '{"index":9}'::jsonb);
 
--- ── 999 990 globally distributed elements (el-10 to el-999 999) ──────────────
+-- ── 999 990 California-bounded elements (el-10 to el-999 999) ────────────────
 -- Type assigned by (i % 20) threshold — maps exactly to the pyramid ratios:
 --   i%20 in  0.. 7 → access-point  (8/20 = 40%)
 --   i%20 in  8..13 → switch        (6/20 = 30%)
 --   i%20 in 14..16 → server        (3/20 = 15%)
 --   i%20 in 17..18 → router        (2/20 = 10%)
 --   i%20 = 19      → firewall      (1/20 =  5%)
--- lng = ((i*7) % 360000) * 0.001 - 180   → spread across -180..180 with 0.001° step
--- lat = ((i*11) % 180000) * 0.001 - 90   → spread across -90..90  with 0.001° step
--- Multipliers 7 and 11 are coprime to 360000/180000 → near-uniform global coverage.
+-- lng = california_west + ((i*7) % 1000000) / 999999 * california_width
+-- lat = california_south + ((i*11) % 1000000) / 999999 * california_height
+-- Multipliers 7 and 11 are coprime to 1 000 000 → near-uniform coverage inside California.
 
 INSERT INTO network_elements (id, type, label, lng, lat, version, updated_at, properties)
 SELECT
@@ -66,8 +67,8 @@ SELECT
         WHEN (i % 20) < 19 THEN 'router'
         ELSE                     'firewall'
     END || '-' || i,
-    ((i * 7) % 360000) * 0.001 - 180.0,
-    ((i * 11) % 180000) * 0.001 - 90.0,
+    -124.482003 + (((i * 7) % 1000000) / 999999.0) * (-114.131211 - -124.482003),
+    32.528832 + (((i * 11) % 1000000) / 999999.0) * (42.009518 - 32.528832),
     1,
     '2026-01-01 00:00:00+00'::timestamptz,
     '{}'::jsonb

@@ -24,6 +24,10 @@ public class SeedService {
     private static final OffsetDateTime SEED_TIME =
             OffsetDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
     private static final int BATCH_SIZE = 500;
+    private static final double CALIFORNIA_WEST = -124.482003;
+    private static final double CALIFORNIA_EAST = -114.131211;
+    private static final double CALIFORNIA_SOUTH = 32.528832;
+    private static final double CALIFORNIA_NORTH = 42.009518;
 
     /** Guards against concurrent seed invocations, which would cause overlapping deletes/inserts. */
     private final AtomicBoolean seeding = new AtomicBoolean(false);
@@ -49,6 +53,10 @@ public class SeedService {
     private double seededRandom() {
         lcgSeed = (lcgSeed * 16807L) % 2147483647L;
         return (lcgSeed - 1.0) / 2147483646.0;
+    }
+
+    private static double scaleToRange(double min, double max, double fraction) {
+        return min + fraction * (max - min);
     }
 
     /**
@@ -94,8 +102,8 @@ public class SeedService {
             int end = Math.min(i + BATCH_SIZE, elementCount);
             List<NetworkElement> batch = new ArrayList<>(end - i);
             for (int j = i; j < end; j++) {
-                double lng = seededRandom() * 360.0 - 180.0;
-                double lat = seededRandom() * 180.0 - 90.0;
+                double lng = scaleToRange(CALIFORNIA_WEST, CALIFORNIA_EAST, seededRandom());
+                double lat = scaleToRange(CALIFORNIA_SOUTH, CALIFORNIA_NORTH, seededRandom());
                 int typeIdx = (int) (seededRandom() * ELEMENT_TYPES.length);
                 String type = ELEMENT_TYPES[typeIdx];
 

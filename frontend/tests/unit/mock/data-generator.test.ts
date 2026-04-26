@@ -4,6 +4,13 @@ import { generateElements, generateLinks, elementsInTile, resetSeed } from '@/mo
 describe('generateElements', () => {
   beforeEach(() => resetSeed())
 
+  const californiaBounds = {
+    west: -124.482003,
+    east: -114.131211,
+    south: 32.528832,
+    north: 42.009518,
+  }
+
   it('generates the requested number of elements', () => {
     const elements = generateElements(100)
     expect(elements).toHaveLength(100)
@@ -12,10 +19,10 @@ describe('generateElements', () => {
   it('generates elements with valid coordinates', () => {
     const elements = generateElements(50)
     for (const el of elements) {
-      expect(el.lng).toBeGreaterThanOrEqual(-180)
-      expect(el.lng).toBeLessThanOrEqual(180)
-      expect(el.lat).toBeGreaterThanOrEqual(-90)
-      expect(el.lat).toBeLessThanOrEqual(90)
+      expect(el.lng).toBeGreaterThanOrEqual(californiaBounds.west)
+      expect(el.lng).toBeLessThanOrEqual(californiaBounds.east)
+      expect(el.lat).toBeGreaterThanOrEqual(californiaBounds.south)
+      expect(el.lat).toBeLessThanOrEqual(californiaBounds.north)
     }
   })
 
