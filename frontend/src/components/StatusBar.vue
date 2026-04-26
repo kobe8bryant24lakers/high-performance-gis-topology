@@ -1,8 +1,18 @@
 <template>
   <footer class="status-bar">
     <span class="view-badge">Map</span>
-    <span>Elements: {{ topologyStore.nodeCount }}</span>
-    <span>Links: {{ topologyStore.edgeCount }}</span>
+    <template v-if="showRegionStatus">
+      <template v-if="regionStore.regionsList.length > 0">
+        <span>Regions: {{ regionStore.regionsList.length }}</span>
+        <span>Regional devices: {{ compactNumber(regionalDeviceCount) }}</span>
+        <span v-if="regionStore.linkCount > 0">Region links: {{ regionStore.linkCount }}</span>
+      </template>
+      <span v-else>Regions: loading</span>
+    </template>
+    <template v-else>
+      <span>Elements: {{ topologyStore.nodeCount }}</span>
+      <span>Links: {{ topologyStore.edgeCount }}</span>
+    </template>
     <span v-if="topologyStore.clusterCount > 0">Clusters: {{ topologyStore.clusterCount }}</span>
     <span>Zoom: {{ viewportStore.zoom.toFixed(1) }}</span>
     <span v-if="performanceStore.degradationLevel !== 'full'" class="degradation-badge" :class="performanceStore.degradationLevel">
@@ -19,10 +29,27 @@ import { computed } from 'vue'
 import { useTopologyStore } from '@/stores/topology'
 import { useViewportStore } from '@/stores/viewport'
 import { usePerformanceStore } from '@/stores/performance'
+import { useRegionStore } from '@/stores/regions'
 
 const topologyStore = useTopologyStore()
 const viewportStore = useViewportStore()
 const performanceStore = usePerformanceStore()
+const regionStore = useRegionStore()
+
+const isRegionZoom = computed(() => Math.floor(viewportStore.zoom) <= 9)
+const showRegionStatus = computed(() =>
+  isRegionZoom.value || (regionStore.regionsList.length > 0 && topologyStore.nodeCount === 0),
+)
+
+const regionalDeviceCount = computed(() =>
+  regionStore.regionsList.reduce((total, region) => total + region.totalCount, 0),
+)
+
+function compactNumber(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+  return `${value}`
+}
 
 const degradationLabel = computed(() => {
   switch (performanceStore.degradationLevel) {

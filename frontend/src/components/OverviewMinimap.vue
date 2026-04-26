@@ -1,15 +1,15 @@
 <template>
   <aside class="overview-minimap" data-test="overview-minimap">
     <div class="overview-title">
-      <span>Overview</span>
-      <small>{{ regions.length }} areas</small>
+      <span>Regional density</span>
+      <small>{{ regions.length }} city areas</small>
     </div>
     <svg
       class="overview-svg"
       data-test="overview-minimap-svg"
       :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
       role="img"
-      aria-label="Device distribution overview minimap"
+      aria-label="City-level aggregate device density overview minimap"
       @click="navigateFromPointer"
       @pointerdown="startDrag"
       @pointermove="continueDrag"
@@ -55,9 +55,10 @@
         <line :x1="mousePoint.x - 5" :x2="mousePoint.x + 5" :y1="mousePoint.y" :y2="mousePoint.y" />
         <line :x1="mousePoint.x" :x2="mousePoint.x" :y1="mousePoint.y - 5" :y2="mousePoint.y + 5" />
         <circle :cx="mousePoint.x" :cy="mousePoint.y" r="2.5" />
+        <text :x="Math.min(WIDTH - 27, mousePoint.x + 7)" :y="Math.max(9, mousePoint.y - 4)">cursor</text>
       </g>
     </svg>
-    <div class="overview-help">Click or drag to move map</div>
+    <div class="overview-help">Aggregate city heatmap; cursor is location only</div>
   </aside>
 </template>
 
@@ -333,7 +334,17 @@ onBeforeUnmount(() => {
 .overview-mouse circle {
   stroke: #f8fafc;
   stroke-width: 1.2;
-  fill: #f8fafc;
+  fill: none;
+}
+
+.overview-mouse text {
+  fill: #e2e8f0;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: rgba(15, 23, 42, 0.85);
+  stroke-width: 2.5;
 }
 
 .overview-help {

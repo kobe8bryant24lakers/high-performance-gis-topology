@@ -73,6 +73,8 @@ describe('OverviewMinimap', () => {
     expect(wrapper.find('[data-test="overview-density-point"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="overview-viewport"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="overview-mouse"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Regional density')
+    expect(wrapper.text()).toContain('Aggregate city heatmap; cursor is location only')
   })
 
   it('emits navigate coordinates from minimap clicks', async () => {
