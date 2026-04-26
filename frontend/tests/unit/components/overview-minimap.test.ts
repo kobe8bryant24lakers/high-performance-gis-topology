@@ -53,7 +53,7 @@ describe('OverviewMinimap', () => {
     fetchRegionSummary.mockResolvedValue(citySummary())
   })
 
-  it('renders global city distribution, viewport bounds, and mouse position', async () => {
+  it('renders global city heatmap, viewport bounds, and mouse position', async () => {
     const wrapper = mount(OverviewMinimap, {
       props: {
         bounds: { west: -10, south: 40, east: 10, north: 50 },
@@ -66,7 +66,11 @@ describe('OverviewMinimap', () => {
       z: 8,
       bounds: { west: -180, south: -85, east: 180, north: 85 },
     }), expect.any(Number))
-    expect(wrapper.find('[data-test="overview-density-point"]').exists()).toBe(true)
+    const heatmapCell = wrapper.find('[data-test="overview-heatmap-cell"]')
+    expect(heatmapCell.exists()).toBe(true)
+    expect(Number(heatmapCell.attributes('width'))).toBeGreaterThan(0)
+    expect(Number(heatmapCell.attributes('height'))).toBeGreaterThan(0)
+    expect(wrapper.find('[data-test="overview-density-point"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="overview-viewport"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="overview-mouse"]').exists()).toBe(true)
   })
