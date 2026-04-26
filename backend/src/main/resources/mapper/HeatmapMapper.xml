@@ -16,8 +16,6 @@
                 ) AS y
             FROM network_elements ne
             WHERE ne.location &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
-              AND ne.lng BETWEEN #{west} AND #{east}
-              AND ne.lat BETWEEN #{south} AND #{north}
               AND (#{types}::text[] IS NULL OR ne.type = ANY(#{types}::text[]))
               AND (#{propFilter}::text IS NULL OR ne.properties @&gt; #{propFilter}::jsonb)
         )

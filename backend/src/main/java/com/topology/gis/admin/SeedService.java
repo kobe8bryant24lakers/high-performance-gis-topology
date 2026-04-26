@@ -72,6 +72,7 @@ public class SeedService {
             lcgSeed = 42L;  // Starting seed matches TypeScript resetSeed(42)
             insertElements(elementCount);
             insertLinks(elementCount, linkCount);
+            elementMapper.assignRegionsByGeometry();
             log.info("Seeding complete");
         } catch (RuntimeException ex) {
             seeding.set(false);   // release before Spring rolls back so flag is consistent
@@ -84,6 +85,9 @@ public class SeedService {
     /**
      * Generates and inserts elements in chunks of BATCH_SIZE.
      * Each chunk is committed independently — the full list is never in memory.
+     * Region IDs are backfilled by {@link #seed} via {@code assignRegionsByGeometry}
+     * after all rows are inserted, so the regions table is the single source of truth
+     * for the country/province/city grid.
      */
     private void insertElements(int elementCount) {
         for (int i = 0; i < elementCount; i += BATCH_SIZE) {
@@ -104,29 +108,11 @@ public class SeedService {
                 el.setVersion(1);
                 el.setUpdatedAt(SEED_TIME);
                 el.setProperties(Map.of("index", j));
-                RegionAssignment region = assignRegion(lng, lat);
-                el.setCountryRegionId(region.countryId());
-                el.setProvinceRegionId(region.provinceId());
-                el.setCityRegionId(region.cityId());
                 batch.add(el);
             }
             insertElementBatch(batch);
         }
     }
-
-    private static RegionAssignment assignRegion(double lng, double lat) {
-        int country = Math.min(3, Math.max(0, (int) Math.floor((lng + 180.0) / 90.0)));
-        int province = Math.min(2, Math.max(0, (int) Math.floor((lat + 90.0) / 60.0)));
-        double countryWest = -180.0 + country * 90.0;
-        int city = Math.min(2, Math.max(0, (int) Math.floor((lng - countryWest) / 30.0)));
-        return new RegionAssignment(
-                "country-" + country,
-                "province-" + country + "-" + province,
-                "city-" + country + "-" + province + "-" + city
-        );
-    }
-
-    private record RegionAssignment(String countryId, String provinceId, String cityId) {}
 
     /**
      * Generates and inserts links in chunks of BATCH_SIZE.

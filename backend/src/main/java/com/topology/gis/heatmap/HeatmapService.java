@@ -45,8 +45,7 @@ public class HeatmapService {
             List<String> types,
             Map<String, String> propFilters) {
 
-        TileService.toTypesParam(types);
-        String typesParam = TileService.toTypesParam(types == null || types.isEmpty() ? List.of() : types);
+        String typesParam = TileService.toTypesParam(types);
         String propFilter = buildPropFilterJson(propFilters);
         CacheKey cacheKey = new CacheKey(west, south, east, north, columns, rowCount, typesParam, propFilter, CURRENT_GENERATION);
         CacheEntry cached = getCached(cacheKey);

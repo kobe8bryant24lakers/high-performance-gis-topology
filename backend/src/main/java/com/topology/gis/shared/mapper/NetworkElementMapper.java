@@ -40,4 +40,12 @@ public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
     );
 
     long countSearch(@Param("query") String query, @Param("types") String types);
+
+    /**
+     * Backfills country/province/city region IDs by spatially joining each element's location
+     * against the regions table. Uses ST_Intersects so points exactly on shared boundaries still
+     * resolve to a region; ORDER BY r.id provides deterministic tie-breaking. Idempotent — safe
+     * to run after every reseed; relies on the GiST index on regions.geom for performance.
+     */
+    int assignRegionsByGeometry();
 }

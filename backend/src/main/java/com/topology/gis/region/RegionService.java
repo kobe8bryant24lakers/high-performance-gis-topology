@@ -65,13 +65,12 @@ public class RegionService {
             List<String> types,
             Map<String, String> propFilters) {
 
-        TileService.toTypesParam(types);
+        String typesParam = TileService.toTypesParam(types);
         String level = levelForZoom(z);
         if (level == null) {
             return new RegionSummaryResponse(null, List.of(), List.of(), CURRENT_GENERATION);
         }
 
-        String typesParam = TileService.toTypesParam(types == null || types.isEmpty() ? List.of() : types);
         String propFilter = buildPropFilterJson(propFilters);
         CacheKey cacheKey = new CacheKey(level, west, south, east, north, typesParam, propFilter, CURRENT_GENERATION);
         CacheEntry cached = getCached(cacheKey);

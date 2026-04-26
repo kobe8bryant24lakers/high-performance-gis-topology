@@ -73,29 +73,24 @@ SELECT
     '{}'::jsonb
 FROM generate_series(10, 999999) AS i;
 
--- Assign every element to the deterministic synthetic region hierarchy from V2__add_regions.sql.
-WITH indexed AS (
-  SELECT
-      id,
-      LEAST(3, GREATEST(0, FLOOR((lng + 180.0) / 90.0)::int)) AS c,
-      LEAST(2, GREATEST(0, FLOOR((lat + 90.0) / 60.0)::int)) AS p,
-      lng
-  FROM network_elements
-),
-assigned AS (
-  SELECT
-      id,
-      c,
-      p,
-      LEAST(2, GREATEST(0, FLOOR((lng - (-180.0 + c * 90.0)) / 30.0)::int)) AS city
-  FROM indexed
-)
-UPDATE network_elements ne
-SET country_region_id = 'country-' || assigned.c,
-    province_region_id = 'province-' || assigned.c || '-' || assigned.p,
-    city_region_id = 'city-' || assigned.c || '-' || assigned.p || '-' || assigned.city
-FROM assigned
-WHERE ne.id = assigned.id;
+-- Assign every element to its containing region via PostGIS so the regions table
+-- (V2__add_regions.sql) remains the single source of truth for the grid layout.
+UPDATE network_elements ne SET
+    country_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'country' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    ),
+    province_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'province' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    ),
+    city_region_id = (
+        SELECT r.id FROM regions r
+        WHERE r.level = 'city' AND ST_Intersects(r.geom, ne.location)
+        ORDER BY r.id LIMIT 1
+    );
 
 -- ── 10 fixed links establishing el-0 neighbourhood ───────────────────────────
 -- depth-1 from el-0: el-1, el-2, el-10, el-20

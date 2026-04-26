@@ -64,4 +64,23 @@
           AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
     </select>
 
+    <update id="assignRegionsByGeometry">
+        UPDATE network_elements ne SET
+            country_region_id = (
+                SELECT r.id FROM regions r
+                WHERE r.level = 'country' AND ST_Intersects(r.geom, ne.location)
+                ORDER BY r.id LIMIT 1
+            ),
+            province_region_id = (
+                SELECT r.id FROM regions r
+                WHERE r.level = 'province' AND ST_Intersects(r.geom, ne.location)
+                ORDER BY r.id LIMIT 1
+            ),
+            city_region_id = (
+                SELECT r.id FROM regions r
+                WHERE r.level = 'city' AND ST_Intersects(r.geom, ne.location)
+                ORDER BY r.id LIMIT 1
+            )
+    </update>
+
 </mapper>
