@@ -43,19 +43,21 @@ describe('OverviewMinimap', () => {
     fetchDeviceHeatmap.mockResolvedValue(deviceHeatmap())
   })
 
-  it('renders global real-device heatmap, viewport bounds, and mouse position', async () => {
+  it('renders nearby real-device heatmap, viewport bounds, and mouse position', async () => {
     const wrapper = mount(OverviewMinimap, {
       props: {
         bounds: { west: -10, south: 40, east: 10, north: 50 },
+        zoom: 8.4,
         mousePosition: { lng: 2, lat: 43 },
       },
     })
     await flushPromises()
 
     expect(fetchDeviceHeatmap).toHaveBeenCalledWith(expect.objectContaining({
-      bounds: { west: -180, south: -85, east: 180, north: 85 },
+      bounds: { west: -20, south: 35, east: 20, north: 55 },
       columns: 48,
       rows: 24,
+      zoom: 8.4,
     }), expect.any(Number))
     const heatmapCells = wrapper.findAll('[data-test="overview-heatmap-cell"]')
     expect(heatmapCells.length).toBeGreaterThan(2)
@@ -64,15 +66,16 @@ describe('OverviewMinimap', () => {
     expect(wrapper.find('[data-test="overview-density-point"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="overview-viewport"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="overview-mouse"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Device density')
+    expect(wrapper.text()).toContain('Nearby density')
     expect(wrapper.text()).toContain('30 devices')
-    expect(wrapper.text()).toContain('Real device heatmap; cursor is location only')
+    expect(wrapper.text()).toContain('Visible policy heatmap; cursor is location only')
   })
 
   it('emits navigate coordinates from minimap clicks', async () => {
     const wrapper = mount(OverviewMinimap, {
       props: {
         bounds: null,
+        zoom: 5,
         mousePosition: null,
       },
     })

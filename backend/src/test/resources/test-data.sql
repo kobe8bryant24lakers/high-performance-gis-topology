@@ -46,9 +46,13 @@ VALUES
 --   i%20 in 14..16 → server        (3/20 = 15%)
 --   i%20 in 17..18 → router        (2/20 = 10%)
 --   i%20 = 19      → firewall      (1/20 =  5%)
--- lng = california_west + ((i*7) % 1000000) / 999999 * california_width
--- lat = california_south + ((i*11) % 1000000) / 999999 * california_height
--- Multipliers 7 and 11 are coprime to 1 000 000 → near-uniform coverage inside California.
+-- Firewall hierarchy uses deterministic firewall ordinal:
+--   ordinal % 1000 = 0 → core         (≈50 statewide anchors)
+--   ordinal % 10 < 2   → aggregation
+--   otherwise          → access
+-- lng/lat fractions use independent deterministic PostgreSQL hashes.
+-- This keeps reseeds stable while avoiding the diagonal striping produced by
+-- deriving both axes from linear functions of the same i.
 
 INSERT INTO network_elements (id, type, label, lng, lat, version, updated_at, properties)
 SELECT
@@ -67,12 +71,28 @@ SELECT
         WHEN (i % 20) < 19 THEN 'router'
         ELSE                     'firewall'
     END || '-' || i,
-    -124.482003 + (((i * 7) % 1000000) / 999999.0) * (-114.131211 - -124.482003),
-    32.528832 + (((i * 11) % 1000000) / 999999.0) * (42.009518 - 32.528832),
+    -124.482003 + lng_fraction * (-114.131211 - -124.482003),
+    32.528832 + lat_fraction * (42.009518 - 32.528832),
     1,
     '2026-01-01 00:00:00+00'::timestamptz,
-    '{}'::jsonb
-FROM generate_series(10, 999999) AS i;
+    CASE
+        WHEN (i % 20) = 19 THEN jsonb_build_object(
+            'networkTier',
+            CASE
+                WHEN ((((i - 19) / 20) % 1000) = 0) THEN 'core'
+                WHEN ((((i - 19) / 20) % 10) < 2) THEN 'aggregation'
+                ELSE 'access'
+            END
+        )
+        ELSE '{}'::jsonb
+    END
+FROM (
+    SELECT
+        gs.i,
+        (hashtextextended('lng:' || gs.i::text, 17)::numeric + 9223372036854775808) / 18446744073709551615 AS lng_fraction,
+        (hashtextextended('lat:' || gs.i::text, 29)::numeric + 9223372036854775808) / 18446744073709551615 AS lat_fraction
+    FROM generate_series(10, 999999) AS gs(i)
+) AS generated;
 
 -- Assign every element to its containing region via PostGIS so the regions table
 -- (V2__add_regions.sql) remains the single source of truth for the grid layout.

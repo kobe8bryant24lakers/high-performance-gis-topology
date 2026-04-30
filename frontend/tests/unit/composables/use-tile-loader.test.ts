@@ -7,9 +7,14 @@ import {
   computeTileRetryDelayMs,
   computeVisibleElementCount,
   isAbortError,
+  shouldFetchTileLinks,
   shouldUseDeviceTiles,
   shouldFetchEndpoint,
 } from '@/composables/use-tile-loader'
+import {
+  allowedNetworkTiersForZoom,
+  allowedTypesForZoom,
+} from '@/utils/visibility-policy'
 
 describe('bboxToTiles', () => {
   beforeEach(() => {
@@ -95,10 +100,32 @@ describe('shouldFetchEndpoint', () => {
 })
 
 describe('shouldUseDeviceTiles', () => {
-  it('uses region summaries below device zoom and device tiles at zoom 10+', () => {
-    expect(shouldUseDeviceTiles(9.9)).toBe(false)
-    expect(shouldUseDeviceTiles(10)).toBe(true)
+  it('loads device tiles from the California overview zoom', () => {
+    expect(shouldUseDeviceTiles(4.9)).toBe(false)
+    expect(shouldUseDeviceTiles(5)).toBe(true)
     expect(shouldUseDeviceTiles(15.3)).toBe(true)
+  })
+})
+
+describe('shouldFetchTileLinks', () => {
+  it('defers links until detailed device zooms', () => {
+    expect(shouldFetchTileLinks(11.9)).toBe(false)
+    expect(shouldFetchTileLinks(12)).toBe(true)
+    expect(shouldFetchTileLinks(16)).toBe(true)
+  })
+})
+
+describe('visibility policy', () => {
+  it('keeps overview zoom focused on firewall hierarchy before other device types', () => {
+    expect(allowedTypesForZoom(5)).toEqual(['firewall'])
+    expect(allowedTypesForZoom(10)).toEqual(['firewall'])
+    expect(allowedTypesForZoom(12)).toEqual(['firewall', 'router', 'switch'])
+  })
+
+  it('progressively reveals firewall network tiers', () => {
+    expect(allowedNetworkTiersForZoom(5)).toEqual(['core'])
+    expect(allowedNetworkTiersForZoom(8)).toEqual(['aggregation', 'core'])
+    expect(allowedNetworkTiersForZoom(11)).toEqual([])
   })
 })
 

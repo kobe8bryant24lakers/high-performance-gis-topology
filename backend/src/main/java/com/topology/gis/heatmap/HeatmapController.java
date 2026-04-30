@@ -44,13 +44,14 @@ public class HeatmapController {
             @RequestParam double north,
             @RequestParam(value = "cols", required = false, defaultValue = "48") int columns,
             @RequestParam(value = "rows", required = false, defaultValue = "24") int rows,
+            @RequestParam(value = "z", required = false, defaultValue = "16") int z,
             @RequestParam(value = "types", required = false, defaultValue = "") String typesParam,
             @RequestParam MultiValueMap<String, String> allParams) {
 
         validateBounds(west, south, east, north);
         validateGrid(columns, rows);
         return heatmapService.getDeviceHeatmap(
-                west, south, east, north, columns, rows, parseTypes(typesParam), parsePropFilters(allParams));
+                west, south, east, north, columns, rows, z, parseTypes(typesParam), parsePropFilters(allParams));
     }
 
     private void validateBounds(double west, double south, double east, double north) {

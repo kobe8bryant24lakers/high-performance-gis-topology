@@ -41,8 +41,8 @@ function normalizeLng(lng: number): number {
 }
 
 export const useViewportStore = defineStore('viewport', () => {
-  const zoom = ref(8)
-  const center = ref({ lng: -122.4194, lat: 37.7749 })
+  const zoom = ref(5)
+  const center = ref({ lng: -119.306607, lat: 37.269175 })
   const bounds = ref<ViewportBounds | null>(null)
 
   function updateViewport(update: ViewportUpdate) {

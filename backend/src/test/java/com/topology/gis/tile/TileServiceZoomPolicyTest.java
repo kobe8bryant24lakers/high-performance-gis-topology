@@ -30,27 +30,27 @@ class TileServiceZoomPolicyTest {
     }
 
     @Test
-    void allowedTypesForZoom_zoom7_firewallAndRouter() {
+    void allowedTypesForZoom_zoom7_firewallOnly() {
         assertThat(TileService.allowedTypesForZoom(7))
-                .containsExactlyInAnyOrder("firewall", "router");
+                .containsExactlyInAnyOrder("firewall");
     }
 
     @Test
-    void allowedTypesForZoom_zoom10_firewallRouterSwitch() {
+    void allowedTypesForZoom_zoom10_firewallRouter() {
         assertThat(TileService.allowedTypesForZoom(10))
+                .containsExactlyInAnyOrder("firewall");
+    }
+
+    @Test
+    void allowedTypesForZoom_zoom13_firewallRouterSwitch() {
+        assertThat(TileService.allowedTypesForZoom(13))
                 .containsExactlyInAnyOrder("firewall", "router", "switch");
     }
 
     @Test
-    void allowedTypesForZoom_zoom13_firewallRouterSwitchServer() {
-        assertThat(TileService.allowedTypesForZoom(13))
-                .containsExactlyInAnyOrder("firewall", "router", "switch", "server");
-    }
-
-    @Test
-    void allowedTypesForZoom_zoom15_allFiveTypes() {
+    void allowedTypesForZoom_zoom15_firewallRouterSwitchServer() {
         assertThat(TileService.allowedTypesForZoom(15))
-                .containsExactlyInAnyOrder("firewall", "router", "switch", "server", "access-point");
+                .containsExactlyInAnyOrder("firewall", "router", "switch", "server");
     }
 
     // ── allowedTypesForZoom — boundary values (off-by-one guards) ─────────────
@@ -58,13 +58,15 @@ class TileServiceZoomPolicyTest {
     @ParameterizedTest(name = "zoom={0} -> {1}")
     @CsvSource({
         "5,  'firewall'",
-        "6,  'firewall,router'",
-        "8,  'firewall,router'",
-        "9,  'firewall,router,switch'",
-        "11, 'firewall,router,switch'",
-        "12, 'firewall,router,switch,server'",
+        "6,  'firewall'",
+        "8,  'firewall'",
+        "9,  'firewall'",
+        "11, 'firewall'",
+        "12, 'firewall,router,switch'",
+        "13, 'firewall,router,switch'",
         "14, 'firewall,router,switch,server'",
-        "15, 'firewall,router,switch,server,access-point'"
+        "15, 'firewall,router,switch,server'",
+        "16, 'firewall,router,switch,server,access-point'"
     })
     void allowedTypesForZoom_boundaries(int z, String expectedCsv) {
         Set<String> expected = Set.of(expectedCsv.split(","));
@@ -72,19 +74,24 @@ class TileServiceZoomPolicyTest {
                 .containsExactlyInAnyOrderElementsOf(expected);
     }
 
+    @Test
+    void tileCaps_boundWorstCaseInteractivePayloads() {
+        assertThat(TileService.TILE_ELEMENT_CAP).isGreaterThanOrEqualTo(50_000);
+        assertThat(TileService.TILE_LINK_CAP).isLessThanOrEqualTo(5_000);
+    }
+
     // ── effectiveTypes — intersection rule ─────────────────────────────────────
 
     @Test
     void effectiveTypes_nullClientFilter_returnsZoomAllowed() {
-        // zoom=10 allows firewall, router, switch
         List<String> result = TileService.effectiveTypes(10, null);
-        assertThat(result).containsExactlyInAnyOrder("firewall", "router", "switch");
+        assertThat(result).containsExactlyInAnyOrder("firewall");
     }
 
     @Test
     void effectiveTypes_emptyClientFilter_returnsZoomAllowed() {
         List<String> result = TileService.effectiveTypes(10, List.of());
-        assertThat(result).containsExactlyInAnyOrder("firewall", "router", "switch");
+        assertThat(result).containsExactlyInAnyOrder("firewall");
     }
 
     @Test
@@ -96,15 +103,13 @@ class TileServiceZoomPolicyTest {
 
     @Test
     void effectiveTypes_partialOverlap_returnsIntersection() {
-        // zoom=10 allows firewall,router,switch; client requests router,server → only router
-        List<String> result = TileService.effectiveTypes(10, List.of("router", "server"));
+        List<String> result = TileService.effectiveTypes(12, List.of("router", "server"));
         assertThat(result).containsExactlyInAnyOrder("router");
     }
 
     @Test
     void effectiveTypes_clientRequestsAllAllowed_returnsFull() {
-        // zoom=7 allows firewall,router; client requests same two
-        List<String> result = TileService.effectiveTypes(7, List.of("firewall", "router"));
+        List<String> result = TileService.effectiveTypes(12, List.of("firewall", "router"));
         assertThat(result).containsExactlyInAnyOrder("firewall", "router");
     }
 
@@ -112,6 +117,48 @@ class TileServiceZoomPolicyTest {
     void effectiveTypes_isDeterministicAndDeduplicatedForCacheKeyStability() {
         List<String> result = TileService.effectiveTypes(15, List.of("router", "firewall", "router"));
         assertThat(result).containsExactly("firewall", "router");
+    }
+
+    @Test
+    void firewallTiersForZoom_zoom5_coreOnly() {
+        assertThat(TileService.firewallTiersForZoom(5)).containsExactly("core");
+    }
+
+    @Test
+    void firewallTiersForZoom_zoom8_coreAndAggregation() {
+        assertThat(TileService.firewallTiersForZoom(8)).containsExactly("aggregation", "core");
+    }
+
+    @Test
+    void firewallTiersForZoom_zoom11_unrestricted() {
+        assertThat(TileService.firewallTiersForZoom(11)).isEmpty();
+    }
+
+    @Test
+    void getTileElements_zoom5InjectsCoreFirewallTierFilter() {
+        AtomicInteger tileQueryCount = new AtomicInteger();
+        java.util.concurrent.atomic.AtomicReference<Object[]> capturedArgs = new java.util.concurrent.atomic.AtomicReference<>();
+        NetworkElementMapper elementMapper = stubElementMapper(tileQueryCount, List.of(), capturedArgs);
+        TopologyLinkMapper linkMapper = stubLinkMapper();
+        TileService service = new TileService(elementMapper, linkMapper, new ObjectMapper());
+
+        service.getTileElements(5, 0, 0, List.of(), Map.of());
+
+        assertThat(tileQueryCount.get()).isEqualTo(1);
+        assertThat(capturedArgs.get()[6]).isEqualTo("{core}");
+    }
+
+    @Test
+    void getTileElements_zoom5AccessTierUserFilterSkipsDbQuery() {
+        AtomicInteger tileQueryCount = new AtomicInteger();
+        NetworkElementMapper elementMapper = stubElementMapper(tileQueryCount, List.of());
+        TopologyLinkMapper linkMapper = stubLinkMapper();
+        TileService service = new TileService(elementMapper, linkMapper, new ObjectMapper());
+
+        var response = service.getTileElements(5, 0, 0, List.of(), Map.of("networkTier", "access"));
+
+        assertThat(response.elements()).isEmpty();
+        assertThat(tileQueryCount.get()).isZero();
     }
 
     @Test
@@ -162,12 +209,22 @@ class TileServiceZoomPolicyTest {
     }
 
     private static NetworkElementMapper stubElementMapper(AtomicInteger tileQueryCount, List<NetworkElement> tileResponse) {
+        return stubElementMapper(tileQueryCount, tileResponse, null);
+    }
+
+    private static NetworkElementMapper stubElementMapper(
+            AtomicInteger tileQueryCount,
+            List<NetworkElement> tileResponse,
+            java.util.concurrent.atomic.AtomicReference<Object[]> capturedFindInTileArgs) {
         return (NetworkElementMapper) Proxy.newProxyInstance(
                 NetworkElementMapper.class.getClassLoader(),
                 new Class[]{NetworkElementMapper.class},
                 (proxy, method, args) -> {
                     if ("findInTile".equals(method.getName())) {
                         tileQueryCount.incrementAndGet();
+                        if (capturedFindInTileArgs != null) {
+                            capturedFindInTileArgs.set(args);
+                        }
                         return tileResponse;
                     }
                     if ("findIdsInTile".equals(method.getName())) {

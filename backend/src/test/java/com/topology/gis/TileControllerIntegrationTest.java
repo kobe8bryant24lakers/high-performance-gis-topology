@@ -53,7 +53,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void tileElements_atLowZoom_returnsOnlyZoomAllowedTypes() {
-        // z=8 allows only firewall and router — no clusters, no switches/servers/access-points
+        // z=8 allows only firewall elements, limited to core/aggregation tiers.
         ResponseEntity<TileElementsResponse> resp = restTemplate.getForEntity(
                 SAN_FRANCISCO_Z8_TILE + "/elements", TileElementsResponse.class);
 
@@ -62,7 +62,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         assertThat(body).isNotNull();
         assertThat(body.clusters()).isEmpty();
         body.elements().forEach(el ->
-                assertThat(el.type()).isIn("firewall", "router"));
+                assertThat(el.type()).isEqualTo("firewall"));
     }
 
     @Test
@@ -134,7 +134,7 @@ class TileControllerIntegrationTest extends BaseIntegrationTest {
         visibleFirewall.setLat(37.9);
         visibleFirewall.setVersion(1);
         visibleFirewall.setUpdatedAt(now);
-        visibleFirewall.setProperties(Map.of());
+        visibleFirewall.setProperties(Map.of("networkTier", "core"));
         elementMapper.insert(visibleFirewall);
 
         NetworkElement hiddenSwitch = new NetworkElement();

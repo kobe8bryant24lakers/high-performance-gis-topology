@@ -18,6 +18,7 @@
             WHERE ne.location &amp;&amp; ST_MakeEnvelope(#{west}, #{south}, #{east}, #{north}, 4326)
               AND (#{types}::text[] IS NULL OR ne.type = ANY(#{types}::text[]))
               AND (#{propFilter}::text IS NULL OR ne.properties @&gt; #{propFilter}::jsonb)
+              AND (#{networkTiers}::text[] IS NULL OR ne.properties -&gt;&gt; 'networkTier' = ANY(#{networkTiers}::text[]))
         )
         SELECT x, y, COUNT(*) AS count
         FROM binned

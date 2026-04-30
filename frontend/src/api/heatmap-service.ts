@@ -6,6 +6,7 @@ export interface DeviceHeatmapQuery {
   bounds: ViewportBounds
   columns: number
   rows: number
+  zoom: number
   types: readonly string[]
   propertyFilters: Readonly<Record<string, string>>
 }
@@ -22,6 +23,7 @@ export function buildDeviceHeatmapQuery(query: DeviceHeatmapQuery): string {
     `north=${query.bounds.north}`,
     `cols=${Math.floor(query.columns)}`,
     `rows=${Math.floor(query.rows)}`,
+    `z=${Math.floor(query.zoom)}`,
   ]
 
   const normalizedTypes = query.types

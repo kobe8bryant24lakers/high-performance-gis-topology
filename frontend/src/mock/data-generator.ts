@@ -1,4 +1,5 @@
 import type { NetworkElement, TopologyLink, TopologyCluster } from '@/types/topology'
+import { firewallTierForOrdinal } from '@/utils/visibility-policy'
 
 const ELEMENT_TYPES = ['router', 'switch', 'server', 'firewall', 'access-point']
 const CALIFORNIA_BOUNDS = {
@@ -20,11 +21,17 @@ export function resetSeed(s = 42): void {
 
 export function generateElements(count: number): NetworkElement[] {
   const elements: NetworkElement[] = []
+  let firewallOrdinal = 0
   for (let i = 0; i < count; i++) {
     const lng = CALIFORNIA_BOUNDS.west + seededRandom() * (CALIFORNIA_BOUNDS.east - CALIFORNIA_BOUNDS.west)
     const lat = CALIFORNIA_BOUNDS.south + seededRandom() * (CALIFORNIA_BOUNDS.north - CALIFORNIA_BOUNDS.south)
     const typeIndex = Math.floor(seededRandom() * ELEMENT_TYPES.length)
     const elementType = ELEMENT_TYPES[typeIndex] ?? 'router'
+    const properties: Record<string, unknown> = { index: i }
+    if (elementType === 'firewall') {
+      properties.networkTier = firewallTierForOrdinal(firewallOrdinal)
+      firewallOrdinal += 1
+    }
     elements.push({
       id: `el-${i}`,
       type: elementType,
@@ -33,7 +40,7 @@ export function generateElements(count: number): NetworkElement[] {
       lat,
       version: 1,
       updatedAt: '2026-01-01T00:00:00Z',
-      properties: { index: i },
+      properties,
     })
   }
   return elements

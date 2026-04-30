@@ -139,7 +139,11 @@ export function shouldFetchEndpoint(
 }
 
 export function shouldUseDeviceTiles(zoom: number): boolean {
-  return Math.floor(zoom) >= 10
+  return Math.floor(zoom) >= 5
+}
+
+export function shouldFetchTileLinks(zoom: number): boolean {
+  return Math.floor(zoom) >= 12
 }
 
 function encodeTypeParamToken(token: string): string {
@@ -240,7 +244,8 @@ export function useTileLoader() {
     return created
   }
 
-  function shouldAttemptTileLoad(tileKey: string, now: number): boolean {
+  function shouldAttemptTileLoad(tile: TileCoord, now: number): boolean {
+    const tileKey = tileKeyFromCoord(tile)
     const state = tileLoadStates.get(tileKey)
     if (!state) return !tileCache.has(tileKey)
 
@@ -250,12 +255,13 @@ export function useTileLoader() {
       state.nextElementRetryAt,
       now,
     )
-    const shouldFetchLinks = shouldFetchEndpoint(
-      state.linksLoaded,
-      state.linksInFlight,
-      state.nextLinkRetryAt,
-      now,
-    )
+    const shouldFetchLinks = shouldFetchTileLinks(tile.z)
+      && shouldFetchEndpoint(
+        state.linksLoaded,
+        state.linksInFlight,
+        state.nextLinkRetryAt,
+        now,
+      )
 
     return shouldFetchElements || shouldFetchLinks
   }
@@ -307,12 +313,13 @@ export function useTileLoader() {
       state.nextElementRetryAt,
       now,
     )
-    const fetchLinks = shouldFetchEndpoint(
-      state.linksLoaded,
-      state.linksInFlight,
-      state.nextLinkRetryAt,
-      now,
-    )
+    const fetchLinks = shouldFetchTileLinks(tile.z)
+      && shouldFetchEndpoint(
+        state.linksLoaded,
+        state.linksInFlight,
+        state.nextLinkRetryAt,
+        now,
+      )
     if (!fetchElements && !fetchLinks) return
 
     const qs = filterQueryString()
@@ -394,7 +401,7 @@ export function useTileLoader() {
     evictStaleTiles(visibleKeys)
 
     const now = Date.now()
-    const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(tileKeyFromCoord(t), now))
+    const tilesToLoad = tiles.filter((t) => shouldAttemptTileLoad(t, now))
     const gen = tilesToLoad.length > 0
       ? tileService.nextGeneration()
       : tileService.currentGeneration()
@@ -479,7 +486,7 @@ export function useTileLoader() {
   // Retry scheduler: periodically check for visible tiles with pending retries
   const retryTickInterval = setInterval(() => {
     if (!viewportStore.bounds) return
-    if (!shouldUseDeviceTiles(viewportStore.zoom)) return
+    if (!shouldUseDeviceTiles(viewportStore.zoom) || !shouldFetchTileLinks(viewportStore.zoom)) return
     const now = Date.now()
     const tiles = viewportStore.visibleTiles
     const pendingRetries = tiles.filter((t) => {

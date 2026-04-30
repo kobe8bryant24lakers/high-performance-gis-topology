@@ -71,6 +71,45 @@ class SeedServiceTest {
         });
     }
 
+    @Test
+    void seed_assignsDeterministicNetworkTierToFirewallElements() {
+        List<NetworkElement> insertedElements = new ArrayList<>();
+
+        NetworkElementMapper elementMapper = (NetworkElementMapper) Proxy.newProxyInstance(
+                NetworkElementMapper.class.getClassLoader(),
+                new Class<?>[]{NetworkElementMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName()) && args != null && args[0] instanceof NetworkElement element) {
+                        insertedElements.add(element);
+                        return 1;
+                    }
+                    if ("assignRegionsByGeometry".equals(method.getName())) {
+                        return 1;
+                    }
+                    return defaultValue(method.getReturnType());
+                });
+
+        TopologyLinkMapper linkMapper = (TopologyLinkMapper) Proxy.newProxyInstance(
+                TopologyLinkMapper.class.getClassLoader(),
+                new Class<?>[]{TopologyLinkMapper.class},
+                (proxy, method, args) -> defaultValue(method.getReturnType()));
+
+        SeedService seedService = new SeedService(elementMapper, linkMapper);
+
+        seedService.seed(5000, 0);
+
+        List<NetworkElement> firewalls = insertedElements.stream()
+                .filter(element -> "firewall".equals(element.getType()))
+                .toList();
+        assertThat(firewalls).isNotEmpty();
+        assertThat(firewalls).allSatisfy(element -> {
+            assertThat(element.getProperties()).containsKey("networkTier");
+            assertThat(element.getProperties().get("networkTier")).isIn("core", "aggregation", "access");
+        });
+        assertThat(firewalls)
+                .anySatisfy(element -> assertThat(element.getProperties()).containsEntry("networkTier", "core"));
+    }
+
     private static Object defaultValue(Class<?> type) {
         if (type == boolean.class) return false;
         if (type == byte.class) return (byte) 0;

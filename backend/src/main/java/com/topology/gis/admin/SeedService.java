@@ -59,6 +59,25 @@ public class SeedService {
         return min + fraction * (max - min);
     }
 
+    private static String firewallTierForOrdinal(int firewallOrdinal) {
+        if (Math.floorMod(firewallOrdinal, 1000) == 0) {
+            return "core";
+        }
+        if (Math.floorMod(firewallOrdinal, 10) < 2) {
+            return "aggregation";
+        }
+        return "access";
+    }
+
+    private static Map<String, Object> elementProperties(String type, int index, int firewallOrdinal) {
+        if ("firewall".equals(type)) {
+            return Map.of(
+                    "index", index,
+                    "networkTier", firewallTierForOrdinal(firewallOrdinal));
+        }
+        return Map.of("index", index);
+    }
+
     /**
      * Atomically clears all topology data and reseeds with random elements and links.
      * The entire operation runs in a single transaction: if any insert fails the delete
@@ -98,6 +117,7 @@ public class SeedService {
      * for the country/province/city grid.
      */
     private void insertElements(int elementCount) {
+        int firewallOrdinal = 0;
         for (int i = 0; i < elementCount; i += BATCH_SIZE) {
             int end = Math.min(i + BATCH_SIZE, elementCount);
             List<NetworkElement> batch = new ArrayList<>(end - i);
@@ -106,6 +126,11 @@ public class SeedService {
                 double lat = scaleToRange(CALIFORNIA_SOUTH, CALIFORNIA_NORTH, seededRandom());
                 int typeIdx = (int) (seededRandom() * ELEMENT_TYPES.length);
                 String type = ELEMENT_TYPES[typeIdx];
+                int currentFirewallOrdinal = -1;
+                if ("firewall".equals(type)) {
+                    currentFirewallOrdinal = firewallOrdinal;
+                    firewallOrdinal += 1;
+                }
 
                 NetworkElement el = new NetworkElement();
                 el.setId("el-" + j);
@@ -115,7 +140,7 @@ public class SeedService {
                 el.setLat(lat);
                 el.setVersion(1);
                 el.setUpdatedAt(SEED_TIME);
-                el.setProperties(Map.of("index", j));
+                el.setProperties(elementProperties(type, j, currentFirewallOrdinal));
                 batch.add(el);
             }
             insertElementBatch(batch);

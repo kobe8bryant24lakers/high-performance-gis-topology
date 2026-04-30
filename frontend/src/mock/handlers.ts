@@ -6,6 +6,10 @@ import {
   resetSeed,
 } from './data-generator'
 import type { NetworkElement, TileElementsResponse, TileLinksResponse } from '@/types/topology'
+import {
+  allowedTypesForZoom,
+  elementMatchesZoomPolicy,
+} from '@/utils/visibility-policy'
 
 resetSeed(42)
 let ALL_ELEMENTS = generateElements(5000)
@@ -22,16 +26,8 @@ function linksForElements(elements: NetworkElement[]) {
   return ALL_LINKS.filter((l) => ids.has(l.sourceId) || ids.has(l.targetId))
 }
 
-function allowedTypesForZoom(z: number): Set<string> {
-  if (z <= 5) return new Set(['firewall'])
-  if (z <= 8) return new Set(['firewall', 'router'])
-  if (z <= 11) return new Set(['firewall', 'router', 'switch'])
-  if (z <= 14) return new Set(['firewall', 'router', 'switch', 'server'])
-  return new Set(['firewall', 'router', 'switch', 'server', 'access-point'])
-}
-
 function effectiveTypes(z: number, requestedTypes: string[]): Set<string> {
-  const allowed = allowedTypesForZoom(z)
+  const allowed = new Set(allowedTypesForZoom(z))
   if (requestedTypes.length === 0) return allowed
   return new Set(requestedTypes.filter((type) => allowed.has(type)))
 }
@@ -55,7 +51,8 @@ export const handlers = [
         removedIds: [],
       } satisfies TileElementsResponse)
     }
-    const elements = elementsInTile(ALL_ELEMENTS, z, x, y).filter((el) => types.has(el.type))
+    const elements = elementsInTile(ALL_ELEMENTS, z, x, y)
+      .filter((el) => elementMatchesZoomPolicy(el, z, types))
 
     const response: TileElementsResponse = {
       elements,
@@ -86,11 +83,15 @@ export const handlers = [
     }
 
     const allById = new Map(ALL_ELEMENTS.map((e) => [e.id, e]))
-    const tileElements = elementsInTile(ALL_ELEMENTS, z, x, y).filter((el) => types.has(el.type))
+    const tileElements = elementsInTile(ALL_ELEMENTS, z, x, y)
+      .filter((el) => elementMatchesZoomPolicy(el, z, types))
     const tileLinks = linksForElements(tileElements).filter((link) => {
       const src = allById.get(link.sourceId)
       const tgt = allById.get(link.targetId)
-      return !!src && !!tgt && types.has(src.type) && types.has(tgt.type)
+      return !!src
+        && !!tgt
+        && elementMatchesZoomPolicy(src, z, types)
+        && elementMatchesZoomPolicy(tgt, z, types)
     })
     const tileElementIds = new Set(tileElements.map((e) => e.id))
 

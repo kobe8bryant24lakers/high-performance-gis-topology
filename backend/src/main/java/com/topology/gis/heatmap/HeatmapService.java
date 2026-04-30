@@ -42,12 +42,21 @@ public class HeatmapService {
             double north,
             int columns,
             int rowCount,
+            int z,
             List<String> types,
             Map<String, String> propFilters) {
 
-        String typesParam = TileService.toTypesParam(types);
-        String propFilter = buildPropFilterJson(propFilters);
-        CacheKey cacheKey = new CacheKey(west, south, east, north, columns, rowCount, typesParam, propFilter, CURRENT_GENERATION);
+        TileService.toTypesParam(types);
+        TileService.EffectiveFilters filters = TileService.effectiveFilters(z, types, propFilters);
+        if (filters.empty()) {
+            return new HeatmapResponse(
+                    west, south, east, north, columns, rowCount, 0L, 0L, List.of(), CURRENT_GENERATION);
+        }
+
+        String typesParam = TileService.toTypesParam(filters.types());
+        String networkTiersParam = TileService.toTypesParam(filters.networkTiers());
+        String propFilter = buildPropFilterJson(filters.propFilters());
+        CacheKey cacheKey = new CacheKey(west, south, east, north, columns, rowCount, z, typesParam, networkTiersParam, propFilter, CURRENT_GENERATION);
         CacheEntry cached = getCached(cacheKey);
         if (cached != null) {
             return cached.response();
@@ -56,7 +65,7 @@ public class HeatmapService {
         List<HeatmapCellDto> cells = new ArrayList<>();
         long totalCount = 0L;
         long maxCount = 0L;
-        for (var row : heatmapMapper.findDeviceHeatmapCells(west, south, east, north, columns, rowCount, typesParam, propFilter)) {
+        for (var row : heatmapMapper.findDeviceHeatmapCells(west, south, east, north, columns, rowCount, typesParam, propFilter, networkTiersParam)) {
             long count = row.getCount() == null ? 0L : row.getCount();
             if (count <= 0L) {
                 continue;
@@ -98,7 +107,9 @@ public class HeatmapService {
             double north,
             int columns,
             int rows,
+            int z,
             String typesParam,
+            String networkTiersParam,
             String propFilter,
             long generation
     ) {}

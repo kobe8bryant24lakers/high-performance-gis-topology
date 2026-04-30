@@ -74,6 +74,23 @@ class HeatmapControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void heatmap_zoomPolicyLimitsLowZoomToFirewallCoreTier() {
+        ResponseEntity<Map> zoom5 = restTemplate.getForEntity(
+                "/api/topology/heatmap?west=-180&south=-90&east=180&north=90&cols=24&rows=12&z=5",
+                Map.class);
+        ResponseEntity<Map> zoom11 = restTemplate.getForEntity(
+                "/api/topology/heatmap?west=-180&south=-90&east=180&north=90&cols=24&rows=12&z=11",
+                Map.class);
+
+        assertThat(zoom5.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(zoom11.getStatusCode().is2xxSuccessful()).isTrue();
+        long zoom5Total = ((Number) zoom5.getBody().get("totalCount")).longValue();
+        long zoom11Total = ((Number) zoom11.getBody().get("totalCount")).longValue();
+        assertThat(zoom11Total).isPositive();
+        assertThat(zoom5Total).isLessThan(zoom11Total);
+    }
+
+    @Test
     void heatmap_propFilterEliminatesAllNonMatchingRows() {
         // Seed properties only set "index" (integer). A property filter on a key that no element
         // has must apply correctly — i.e. eliminate every row — proving the @> JSONB filter is wired up.

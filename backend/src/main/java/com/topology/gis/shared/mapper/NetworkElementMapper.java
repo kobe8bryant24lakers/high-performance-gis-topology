@@ -18,6 +18,7 @@ public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
             @Param("north") double north,
             @Param("types") String types,
             @Param("propFilter") String propFilter,
+            @Param("networkTiers") String networkTiers,
             @Param("limit") int limit
     );
 
@@ -28,6 +29,7 @@ public interface NetworkElementMapper extends BaseMapper<NetworkElement> {
             @Param("north") double north,
             @Param("types") String types,
             @Param("propFilter") String propFilter,
+            @Param("networkTiers") String networkTiers,
             @Param("limit") int limit
     );
 

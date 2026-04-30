@@ -8,7 +8,6 @@ import { useViewportStore } from '@/stores/viewport'
 
 const mapConstructor = vi.fn()
 const loadVisibleTiles = vi.fn()
-const loadRegionSummaries = vi.fn()
 const flyToMock = vi.fn()
 const mapHandlers = new Map<string, (...args: any[]) => void>()
 
@@ -24,10 +23,6 @@ vi.mock('@/composables/use-deck-layers', () => ({
 
 vi.mock('@/composables/use-tile-loader', () => ({
   useTileLoader: () => ({ loadVisibleTiles }),
-}))
-
-vi.mock('@/composables/use-region-loader', () => ({
-  useRegionLoader: () => ({ loadRegionSummaries, dispose: vi.fn() }),
 }))
 
 vi.mock('mapbox-gl', () => {
@@ -68,7 +63,6 @@ describe('MapView', () => {
     vi.stubEnv('VITE_MAPBOX_TOKEN', 'test-token')
     mapConstructor.mockClear()
     loadVisibleTiles.mockClear()
-    loadRegionSummaries.mockClear()
     flyToMock.mockClear()
     mapHandlers.clear()
   })
@@ -83,10 +77,9 @@ describe('MapView', () => {
     }))
   })
 
-  it('wires both region and device loaders on map load', () => {
+  it('wires the device tile loader on map load', () => {
     mount(MapView)
 
-    expect(loadRegionSummaries).toHaveBeenCalledOnce()
     expect(loadVisibleTiles).toHaveBeenCalledOnce()
   })
 
@@ -104,6 +97,7 @@ describe('MapView', () => {
     await nextTick()
 
     expect(wrapper.find('[data-test="empty-device-guide"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="empty-device-guide"]').text()).not.toContain('region summaries')
   })
 
   it('renders overview minimap and routes minimap navigation to the main map', async () => {
@@ -111,7 +105,7 @@ describe('MapView', () => {
       global: {
         stubs: {
           OverviewMinimap: {
-            props: ['bounds', 'mousePosition'],
+            props: ['bounds', 'zoom', 'mousePosition'],
             emits: ['navigate'],
             template: '<button data-test="overview-minimap-stub" @click="$emit(\'navigate\', { lng: 12, lat: 34 })" />',
           },
@@ -132,8 +126,8 @@ describe('MapView', () => {
       global: {
         stubs: {
           OverviewMinimap: {
-            props: ['bounds', 'mousePosition'],
-            template: '<div data-test="overview-minimap-stub">{{ mousePosition?.lng }},{{ mousePosition?.lat }}</div>',
+            props: ['bounds', 'zoom', 'mousePosition'],
+            template: '<div data-test="overview-minimap-stub">{{ zoom }} {{ mousePosition?.lng }},{{ mousePosition?.lat }}</div>',
           },
         },
       },
@@ -142,6 +136,6 @@ describe('MapView', () => {
     mapHandlers.get('mousemove')?.({ lngLat: { lng: 12.5, lat: 34.5 } })
     await nextTick()
 
-    expect(wrapper.find('[data-test="overview-minimap-stub"]').text()).toContain('12.5,34.5')
+    expect(wrapper.find('[data-test="overview-minimap-stub"]').text()).toContain('2 12.5,34.5')
   })
 })

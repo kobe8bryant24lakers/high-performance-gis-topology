@@ -23,6 +23,7 @@
           AND lat &gt; #{south} AND lat &lt;= #{north}
           AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
           AND (#{propFilter}::text IS NULL OR properties @> #{propFilter}::jsonb)
+          AND (#{networkTiers}::text[] IS NULL OR properties -&gt;&gt; 'networkTier' = ANY(#{networkTiers}::text[]))
         ORDER BY id
         LIMIT #{limit}
     </select>
@@ -35,6 +36,7 @@
           AND lat &gt; #{south} AND lat &lt;= #{north}
           AND (#{types}::text[] IS NULL OR type = ANY(#{types}::text[]))
           AND (#{propFilter}::text IS NULL OR properties @> #{propFilter}::jsonb)
+          AND (#{networkTiers}::text[] IS NULL OR properties -&gt;&gt; 'networkTier' = ANY(#{networkTiers}::text[]))
         ORDER BY id
         LIMIT #{limit}
     </select>
