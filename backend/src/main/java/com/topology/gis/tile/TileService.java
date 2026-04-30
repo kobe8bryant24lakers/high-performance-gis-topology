@@ -22,9 +22,9 @@ public class TileService {
     // TODO(low): Replace static generation with a monotonic server-side data generation tied to writes for robust client cache invalidation.
     private static final long CURRENT_GENERATION = 1L;
     /** Hard cap pushed into SQL LIMIT — prevents full-scan materialization at the DB layer. */
-    static final int TILE_ELEMENT_CAP = 10_000;
+    static final int TILE_ELEMENT_CAP = 50_000;
     /** Hard cap on links returned per tile request. */
-    static final int TILE_LINK_CAP = 50_000;
+    static final int TILE_LINK_CAP = 5_000;
     /** Hot tile cache limits repeated DB work for jittery pan/zoom traffic. */
     static final int TILE_CACHE_MAX_ENTRIES = 2_000;
     static final long TILE_CACHE_TTL_MS = 5_000L;
@@ -47,8 +47,14 @@ public class TileService {
      * Tile bounding box in WGS84. Mirrors the TypeScript tileToBBox() in data-generator.ts.
      */
     public record TileBBox(double west, double south, double east, double north) {}
-    private record CacheKey(int z, int x, int y, String typesParam, String propFilter, long generation) {}
+    private record CacheKey(int z, int x, int y, String typesParam, String networkTiersParam, String propFilter, long generation) {}
     private record CacheEntry<T>(long expiresAtEpochMs, T value) {}
+    public record EffectiveFilters(
+            List<String> types,
+            List<String> networkTiers,
+            Map<String, String> propFilters,
+            boolean empty
+    ) {}
 
     public static TileBBox tileToBBox(int z, int x, int y) {
         double n = Math.pow(2, z);
@@ -109,11 +115,16 @@ public class TileService {
      * while preserving connectivity at every zoom.
      */
     static Set<String> allowedTypesForZoom(int z) {
-        if (z <= 5)  return Set.of("firewall");
-        if (z <= 8)  return Set.of("firewall", "router");
-        if (z <= 11) return Set.of("firewall", "router", "switch");
-        if (z <= 14) return Set.of("firewall", "router", "switch", "server");
+        if (z <= 11) return Set.of("firewall");
+        if (z <= 13) return Set.of("firewall", "router", "switch");
+        if (z <= 15) return Set.of("firewall", "router", "switch", "server");
         return Set.of("firewall", "router", "switch", "server", "access-point");
+    }
+
+    static List<String> firewallTiersForZoom(int z) {
+        if (z <= 7) return List.of("core");
+        if (z <= 10) return List.of("aggregation", "core");
+        return List.of();
     }
 
     /**
@@ -136,6 +147,44 @@ public class TileService {
                 .toList();
     }
 
+    public static EffectiveFilters effectiveFilters(
+            int z,
+            List<String> clientTypes,
+            Map<String, String> propFilters) {
+        List<String> effectiveTypes = effectiveTypes(z, clientTypes);
+        if (effectiveTypes.isEmpty() && clientTypes != null && !clientTypes.isEmpty()) {
+            return new EffectiveFilters(List.of(), List.of(), Map.of(), true);
+        }
+
+        Map<String, String> remainingPropFilters = new TreeMap<>();
+        String requestedNetworkTier = null;
+        if (propFilters != null) {
+            for (Map.Entry<String, String> entry : propFilters.entrySet()) {
+                if ("networkTier".equals(entry.getKey())) {
+                    requestedNetworkTier = entry.getValue() == null
+                            ? null
+                            : entry.getValue().trim().toLowerCase(Locale.ROOT);
+                    continue;
+                }
+                remainingPropFilters.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        List<String> zoomTiers = firewallTiersForZoom(z);
+        List<String> effectiveTiers = List.of();
+        if (requestedNetworkTier != null && !requestedNetworkTier.isEmpty()) {
+            toTypesParam(List.of(requestedNetworkTier));
+            if (!zoomTiers.isEmpty() && !zoomTiers.contains(requestedNetworkTier)) {
+                return new EffectiveFilters(List.of(), List.of(), Map.of(), true);
+            }
+            effectiveTiers = List.of(requestedNetworkTier);
+        } else if (!zoomTiers.isEmpty()) {
+            effectiveTiers = zoomTiers;
+        }
+
+        return new EffectiveFilters(effectiveTypes, effectiveTiers, remainingPropFilters, false);
+    }
+
     /**
      * Merges prop.* filter map into a JSON string for the JSONB @> operator.
      * Returns null when the map is empty.
@@ -156,15 +205,16 @@ public class TileService {
 
         // Validate client tokens before zoom intersection so malformed input is never silently dropped.
         toTypesParam(types);
-        List<String> effective = effectiveTypes(z, types);
-        if (effective.isEmpty() && (types != null && !types.isEmpty())) {
+        EffectiveFilters filters = effectiveFilters(z, types, propFilters);
+        if (filters.empty()) {
             // Client requested types that are all outside the zoom-allowed set → no DB call
             return new TileElementsResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
         }
 
-        String typesParam = toTypesParam(effective);
-        String propFilter = buildPropFilterJson(propFilters);
-        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, propFilter, CURRENT_GENERATION);
+        String typesParam = toTypesParam(filters.types());
+        String networkTiersParam = toTypesParam(filters.networkTiers());
+        String propFilter = buildPropFilterJson(filters.propFilters());
+        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, networkTiersParam, propFilter, CURRENT_GENERATION);
         TileElementsResponse cached = getCached(elementTileCache, cacheKey);
         if (cached != null) {
             return cached;
@@ -174,7 +224,7 @@ public class TileService {
 
         List<NetworkElement> entities = elementMapper.findInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
-                typesParam, propFilter, TILE_ELEMENT_CAP);
+                typesParam, propFilter, networkTiersParam, TILE_ELEMENT_CAP);
 
         List<NetworkElementDto> dtos = entities.stream().map(this::toDto).toList();
         TileElementsResponse response = new TileElementsResponse(dtos, List.of(), CURRENT_GENERATION, List.of());
@@ -189,14 +239,15 @@ public class TileService {
 
         // Validate client tokens before zoom intersection so malformed input is never silently dropped.
         toTypesParam(types);
-        List<String> effective = effectiveTypes(z, types);
-        if (effective.isEmpty() && (types != null && !types.isEmpty())) {
+        EffectiveFilters filters = effectiveFilters(z, types, propFilters);
+        if (filters.empty()) {
             return new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());
         }
 
-        String typesParam = toTypesParam(effective);
-        String propFilter = buildPropFilterJson(propFilters);
-        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, propFilter, CURRENT_GENERATION);
+        String typesParam = toTypesParam(filters.types());
+        String networkTiersParam = toTypesParam(filters.networkTiers());
+        String propFilter = buildPropFilterJson(filters.propFilters());
+        CacheKey cacheKey = new CacheKey(z, x, y, typesParam, networkTiersParam, propFilter, CURRENT_GENERATION);
         TileLinksResponse cached = getCached(linksTileCache, cacheKey);
         if (cached != null) {
             return cached;
@@ -206,7 +257,7 @@ public class TileService {
 
         List<String> tileElementIdsList = elementMapper.findIdsInTile(
                 bbox.west(), bbox.south(), bbox.east(), bbox.north(),
-                typesParam, propFilter, TILE_ELEMENT_CAP);
+                typesParam, propFilter, networkTiersParam, TILE_ELEMENT_CAP);
 
         if (tileElementIdsList.isEmpty()) {
             TileLinksResponse response = new TileLinksResponse(List.of(), List.of(), CURRENT_GENERATION, List.of());

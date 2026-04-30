@@ -80,6 +80,46 @@ describe('useDeckLayers', () => {
     expect(haloLayer?.props.getFillColor(topologyStore.getElement('el-1'))).toEqual([77, 163, 255, 50])
   })
 
+  it('adds a top-right tier badge for firewall nodes only', () => {
+    const topologyStore = useTopologyStore()
+    topologyStore.mergeTileElements('z5/x5/y12', {
+      elements: [
+        {
+          id: 'fw-core',
+          type: 'firewall',
+          label: 'firewall-core',
+          lng: -119,
+          lat: 37,
+          version: 1,
+          updatedAt: '2026-01-01T00:00:00Z',
+          properties: { networkTier: 'core' },
+        },
+        {
+          id: 'router-1',
+          type: 'router',
+          label: 'router-1',
+          lng: -118,
+          lat: 36,
+          version: 1,
+          updatedAt: '2026-01-01T00:00:00Z',
+          properties: {},
+        },
+      ],
+      clusters: [],
+      generation: 1,
+      removedIds: [],
+    })
+
+    const { layers } = useDeckLayers(() => undefined, () => undefined)
+    const badgeLayer = layers.value.find((layer) => layer.id === 'firewall-tier-badges')
+
+    expect(badgeLayer?.props.data).toHaveLength(1)
+    expect(badgeLayer?.props.data[0].id).toBe('fw-core')
+    expect(badgeLayer?.props.getText(topologyStore.getElement('fw-core'))).toBe('core')
+    expect(badgeLayer?.props.getPixelOffset).toEqual([14, -14])
+    expect(badgeLayer?.props.getTextAnchor).toBe('middle')
+  })
+
   it('keeps dense map layers complete after removing the alternate layout mode', () => {
     const topologyStore = useTopologyStore()
 
@@ -123,23 +163,36 @@ describe('useDeckLayers', () => {
     expect(linkLayer?.props.getWidth).toBe(1.5)
   })
 
-  it('renders region summary layers instead of device layers when region summaries are active', () => {
+  it('ignores region summaries and renders device layers only', () => {
+    const topologyStore = useTopologyStore()
     const regionStore = useRegionStore()
     regionStore.replaceSummary(cityRegionSummary())
+    topologyStore.mergeTileElements('z5/x4/y12', {
+      elements: [{
+        id: 'fw-1',
+        type: 'firewall',
+        label: 'firewall-1',
+        lng: -119,
+        lat: 37,
+        version: 1,
+        updatedAt: '2026-01-01T00:00:00Z',
+        properties: {},
+      }],
+      clusters: [],
+      generation: 1,
+      removedIds: [],
+    })
 
     const { layers } = useDeckLayers(() => undefined, () => undefined)
     const layerIds = layers.value.map((layer) => layer.id)
 
-    expect(layerIds).toContain('region-virtual-links')
-    expect(layerIds).toContain('region-boundaries')
-    expect(layerIds).toContain('region-summary-labels')
-    expect(layerIds).not.toContain('node-icons')
-
-    const linkLayer = layers.value.find((layer) => layer.id === 'region-virtual-links')
-    expect(linkLayer?.props.data).toHaveLength(0)
+    expect(layerIds).toContain('node-icons')
+    expect(layerIds).not.toContain('region-virtual-links')
+    expect(layerIds).not.toContain('region-boundaries')
+    expect(layerIds).not.toContain('region-summary-labels')
   })
 
-  it('uses region summaries as high-zoom guidance when the device viewport is empty', () => {
+  it('does not render region summaries as high-zoom guidance when the device viewport is empty', () => {
     const viewportStore = useViewportStore()
     const regionStore = useRegionStore()
     const performanceStore = usePerformanceStore()
@@ -154,8 +207,9 @@ describe('useDeckLayers', () => {
     const { layers } = useDeckLayers(() => undefined, () => undefined)
     const layerIds = layers.value.map((layer) => layer.id)
 
-    expect(layerIds).toContain('region-summary-labels')
-    expect(layerIds).not.toContain('node-icons')
+    expect(layerIds).toContain('links')
+    expect(layerIds).toContain('node-icons')
+    expect(layerIds).not.toContain('region-summary-labels')
   })
 
   it('prefers device layers at high zoom once visible devices are loaded', () => {

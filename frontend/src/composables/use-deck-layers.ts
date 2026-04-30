@@ -1,18 +1,21 @@
 import { computed, shallowRef, watch } from 'vue'
-import { IconLayer, LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
+import { IconLayer, LineLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import { useTopologyStore } from '@/stores/topology'
 import { useSelectionStore } from '@/stores/selection'
 import { useFilterStore } from '@/stores/filter'
 import { usePerformanceStore } from '@/stores/performance'
-import { useRegionStore } from '@/stores/regions'
-import { useViewportStore } from '@/stores/viewport'
 import { telemetry } from '@/utils/telemetry'
 import { getNeIconSpec, toDeckColor } from '@/constants/ne-icons'
-import type { NetworkElement, RegionSummary, RegionVirtualLink, TopologyLink } from '@/types/topology'
+import type { NetworkElement, TopologyLink } from '@/types/topology'
 
 type NodeWithStub = NetworkElement & { isStub?: boolean }
 interface EdgeData { source: NodeWithStub; target: NodeWithStub; link: TopologyLink }
-interface RegionEdgeData { source: RegionSummary; target: RegionSummary; link: RegionVirtualLink }
+
+const FIREWALL_TIER_LABELS: Record<string, string> = {
+  core: 'core',
+  aggregation: 'agg',
+  access: 'acc',
+}
 
 export function useDeckLayers(
   onElementClick: (id: string, event?: PointerEvent) => void,
@@ -22,8 +25,6 @@ export function useDeckLayers(
   const selectionStore = useSelectionStore()
   const filterStore = useFilterStore()
   const performanceStore = usePerformanceStore()
-  const regionStore = useRegionStore()
-  const viewportStore = useViewportStore()
 
   const cachedNodes = shallowRef<NodeWithStub[]>([])
   const cachedEdges = shallowRef<EdgeData[]>([])
@@ -56,101 +57,15 @@ export function useDeckLayers(
     return [node.lng, node.lat]
   }
 
-  function getRegionPosition(region: RegionSummary): [number, number] {
-    return [region.centroidLng, region.centroidLat]
-  }
-
-  function getRegionPolygon(region: RegionSummary): [number, number][] {
-    const { west, south, east, north } = region.bbox
-    return [
-      [west, south],
-      [east, south],
-      [east, north],
-      [west, north],
-    ]
-  }
-
-  function compactNumber(value: number): string {
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
-    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-    return `${value}`
-  }
-
-  function formatRegionLabel(region: RegionSummary): string {
-    const counts = region.elementTypes
-    return [
-      region.name,
-      `${compactNumber(region.totalCount)} devices`,
-      `FW ${compactNumber(counts.firewall ?? 0)}  RT ${compactNumber(counts.router ?? 0)}`,
-      `SW ${compactNumber(counts.switch ?? 0)}  SRV ${compactNumber(counts.server ?? 0)}  AP ${compactNumber(counts['access-point'] ?? 0)}`,
-    ].join('\n')
+  function firewallTierLabel(node: NodeWithStub): string {
+    if (node.type !== 'firewall') return ''
+    const tier = node.properties.networkTier
+    return typeof tier === 'string' ? FIREWALL_TIER_LABELS[tier] ?? '' : ''
   }
 
   const layers = computed(() => {
     const layerBuildStart = performance.now()
     const allLayers: any[] = []
-    const regions = regionStore.regionsList
-    const isDeviceZoom = Math.floor(viewportStore.zoom) >= 10
-    const shouldRenderRegions = regions.length > 0
-      && (!isDeviceZoom || performanceStore.visibleElementCount === 0)
-    if (shouldRenderRegions) {
-      const regionById = new Map(regions.map((region) => [region.id, region]))
-      const regionEdges: RegionEdgeData[] = regionStore.links
-        .map((link) => {
-          const source = regionById.get(link.sourceRegionId)
-          const target = regionById.get(link.targetRegionId)
-          if (!source || !target) return null
-          return { source, target, link }
-        })
-        .filter((edge): edge is RegionEdgeData => edge !== null)
-
-      allLayers.push(
-        new LineLayer<RegionEdgeData>({
-          id: 'region-virtual-links',
-          data: regionEdges,
-          getSourcePosition: (d) => getRegionPosition(d.source),
-          getTargetPosition: (d) => getRegionPosition(d.target),
-          getColor: [96, 165, 250, 180],
-          getWidth: (d) => Math.min(8, Math.max(1.5, Math.log10(d.link.count + 1) * 1.8)),
-          widthUnits: 'pixels' as const,
-        }),
-      )
-
-      allLayers.push(
-        new PolygonLayer<RegionSummary>({
-          id: 'region-boundaries',
-          data: regions,
-          getPolygon: getRegionPolygon,
-          getFillColor: [37, 99, 235, 18],
-          getLineColor: [125, 211, 252, 145],
-          getLineWidth: 1,
-          lineWidthUnits: 'pixels' as const,
-          stroked: true,
-          filled: true,
-        }),
-      )
-
-      allLayers.push(
-        new TextLayer<RegionSummary>({
-          id: 'region-summary-labels',
-          data: regions,
-          getPosition: getRegionPosition,
-          getText: formatRegionLabel,
-          getSize: 12,
-          sizeUnits: 'pixels' as const,
-          getColor: [226, 232, 240, 255],
-          getTextAnchor: 'middle' as const,
-          getAlignmentBaseline: 'center' as const,
-          background: true,
-          getBackgroundColor: [15, 23, 42, 220],
-          backgroundPadding: [8, 6] as [number, number],
-          pickable: false,
-        }),
-      )
-
-      telemetry.emit('layer_rebuild_ms', performance.now() - layerBuildStart)
-      return allLayers
-    }
 
     const nodes = cachedNodes.value
     const edges = cachedEdges.value
@@ -253,6 +168,36 @@ export function useDeckLayers(
         updateTriggers: {
           getIcon: [nodes],
           getSize: [degradationLevel],
+        },
+      }),
+    )
+
+    if (degradationLevel !== 'minimal') allLayers.push(
+      new TextLayer<NodeWithStub>({
+        id: 'firewall-tier-badges',
+        data: visibleRealNodes.filter((node) => firewallTierLabel(node) !== ''),
+        getPosition: (d: NodeWithStub) => getNodePosition(d),
+        getText: (d: NodeWithStub) => firewallTierLabel(d),
+        getPixelOffset: [14, -14],
+        getSize: 9,
+        getColor: [255, 255, 255, 245],
+        getBackgroundColor: (d: NodeWithStub) => {
+          const label = firewallTierLabel(d)
+          if (label === 'core') return [220, 38, 38, 235]
+          if (label === 'agg') return [234, 88, 12, 230]
+          return [37, 99, 235, 225]
+        },
+        background: true,
+        backgroundPadding: [3, 2],
+        getTextAnchor: 'middle' as const,
+        getAlignmentBaseline: 'center' as const,
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontWeight: 700,
+        characterSet: 'acegor',
+        pickable: false,
+        updateTriggers: {
+          getText: [nodes],
+          getBackgroundColor: [nodes],
         },
       }),
     )

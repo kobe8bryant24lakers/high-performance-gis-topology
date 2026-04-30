@@ -4,6 +4,7 @@
     <canvas ref="deckRef" class="deck-canvas" />
     <OverviewMinimap
       :bounds="viewportStore.bounds"
+      :zoom="viewportStore.zoom"
       :mouse-position="mousePosition"
       @navigate="onOverviewNavigate"
     />
@@ -27,9 +28,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox'
 import { useViewportStore } from '@/stores/viewport'
 import { useSelectionStore } from '@/stores/selection'
 import { usePerformanceStore } from '@/stores/performance'
-import { useRegionStore } from '@/stores/regions'
 import { useTileLoader } from '@/composables/use-tile-loader'
-import { useRegionLoader } from '@/composables/use-region-loader'
 import { useDeckLayers } from '@/composables/use-deck-layers'
 import OverviewMinimap from '@/components/OverviewMinimap.vue'
 
@@ -44,7 +43,6 @@ const mapRef = ref<HTMLElement | null>(null)
 const viewportStore = useViewportStore()
 const selectionStore = useSelectionStore()
 const performanceStore = usePerformanceStore()
-const regionStore = useRegionStore()
 
 let map: mapboxgl.Map | null = null
 let overlay: MapboxOverlay | null = null
@@ -54,11 +52,7 @@ const mousePosition = ref<{ lng: number; lat: number } | null>(null)
 const showEmptyDeviceGuide = computed(() =>
   Math.floor(viewportStore.zoom) >= 10 && performanceStore.visibleElementCount === 0,
 )
-const emptyDeviceGuideText = computed(() =>
-  regionStore.regionsList.length > 0
-    ? 'Showing city summaries as guides. Zoom out or pan toward a highlighted area.'
-    : 'Zoom out or pan toward an area with region summaries.',
-)
+const emptyDeviceGuideText = 'Zoom out or pan toward an area with visible device types.'
 
 function handleClick(id: string, event?: PointerEvent) {
   if (event?.ctrlKey || event?.metaKey) {
@@ -76,7 +70,6 @@ function handleHover(id: string | null) {
 
 const { layers } = useDeckLayers(handleClick, handleHover)
 const { loadVisibleTiles } = useTileLoader()
-const { loadRegionSummaries, dispose: disposeRegionLoader } = useRegionLoader()
 
 function syncViewport() {
   if (!map) return
@@ -144,7 +137,6 @@ onMounted(() => {
   })
   map.on('load', () => {
     syncViewport()
-    loadRegionSummaries()
     loadVisibleTiles()
   })
 
@@ -154,7 +146,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  disposeRegionLoader()
   map?.remove()
   map = null
   overlay = null

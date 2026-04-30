@@ -1,7 +1,7 @@
 <template>
   <aside class="overview-minimap" data-test="overview-minimap">
     <div class="overview-title">
-      <span>Device density</span>
+      <span>Nearby density</span>
       <small>{{ compactNumber(heatmapMeta.totalCount) }} devices</small>
     </div>
     <svg
@@ -58,7 +58,7 @@
         <text :x="Math.min(WIDTH - 27, mousePoint.x + 7)" :y="Math.max(9, mousePoint.y - 4)">cursor</text>
       </g>
     </svg>
-    <div class="overview-help">Real device heatmap; cursor is location only</div>
+    <div class="overview-help">Visible policy heatmap; cursor is location only</div>
   </aside>
 </template>
 
@@ -99,6 +99,7 @@ type HeatmapCell = {
 
 const props = defineProps<{
   bounds: ViewportBounds | null
+  zoom: number
   mousePosition: { lng: number; lat: number } | null
 }>()
 
@@ -110,6 +111,10 @@ const filterStore = useFilterStore()
 const heatmapService = new HeatmapService()
 const deviceHeatmapCells = ref<DeviceHeatmapCell[]>([])
 const heatmapMeta = ref({
+  west: WORLD_BOUNDS.west,
+  south: WORLD_BOUNDS.south,
+  east: WORLD_BOUNDS.east,
+  north: WORLD_BOUNDS.north,
   columns: HEATMAP_COLUMNS,
   rows: HEATMAP_ROWS,
   maxCount: 0,
@@ -118,28 +123,37 @@ const heatmapMeta = ref({
 const isDragging = ref(false)
 
 function project(lng: number, lat: number): { x: number; y: number } {
-  const x = ((lng + 180) / 360) * WIDTH
-  const y = ((85 - Math.max(-85, Math.min(85, lat))) / 170) * HEIGHT
+  const bounds = heatmapMeta.value
+  const lngSpan = Math.max(1e-9, bounds.east - bounds.west)
+  const latSpan = Math.max(1e-9, bounds.north - bounds.south)
+  const clampedLng = Math.max(bounds.west, Math.min(bounds.east, lng))
+  const clampedLat = Math.max(bounds.south, Math.min(bounds.north, lat))
+  const x = ((clampedLng - bounds.west) / lngSpan) * WIDTH
+  const y = ((bounds.north - clampedLat) / latSpan) * HEIGHT
   return { x, y }
 }
 
 function unproject(x: number, y: number): { lng: number; lat: number } {
-  const lng = (Math.max(0, Math.min(WIDTH, x)) / WIDTH) * 360 - 180
-  const lat = 85 - (Math.max(0, Math.min(HEIGHT, y)) / HEIGHT) * 170
+  const bounds = heatmapMeta.value
+  const lng = bounds.west + (Math.max(0, Math.min(WIDTH, x)) / WIDTH) * (bounds.east - bounds.west)
+  const lat = bounds.north - (Math.max(0, Math.min(HEIGHT, y)) / HEIGHT) * (bounds.north - bounds.south)
   return { lng, lat }
 }
 
 const graticuleLines = computed(() => {
   const lines: { id: string; path: string }[] = []
-  for (const lng of [-120, -60, 0, 60, 120]) {
-    const top = project(lng, 85)
-    const bottom = project(lng, -85)
-    lines.push({ id: `lng-${lng}`, path: `M ${top.x} ${top.y} L ${bottom.x} ${bottom.y}` })
+  const bounds = heatmapMeta.value
+  for (let i = 1; i <= 4; i += 1) {
+    const lng = bounds.west + ((bounds.east - bounds.west) * i) / 5
+    const top = project(lng, bounds.north)
+    const bottom = project(lng, bounds.south)
+    lines.push({ id: `lng-${i}`, path: `M ${top.x} ${top.y} L ${bottom.x} ${bottom.y}` })
   }
-  for (const lat of [-60, -30, 0, 30, 60]) {
-    const left = project(-180, lat)
-    const right = project(180, lat)
-    lines.push({ id: `lat-${lat}`, path: `M ${left.x} ${left.y} L ${right.x} ${right.y}` })
+  for (let i = 1; i <= 3; i += 1) {
+    const lat = bounds.south + ((bounds.north - bounds.south) * i) / 4
+    const left = project(bounds.west, lat)
+    const right = project(bounds.east, lat)
+    lines.push({ id: `lat-${i}`, path: `M ${left.x} ${left.y} L ${right.x} ${right.y}` })
   }
   return lines
 })
@@ -215,6 +229,26 @@ function heatmapOpacity(intensity: number): number {
   return Math.min(0.92, Math.max(0.14, intensity * 0.82))
 }
 
+function heatmapBufferRatio(zoom: number): number {
+  const z = Math.floor(zoom)
+  if (z <= 6) return 1
+  if (z <= 10) return 0.5
+  return 0.25
+}
+
+function heatmapBoundsForViewport(bounds: ViewportBounds | null, zoom: number): ViewportBounds {
+  if (!bounds) return WORLD_BOUNDS
+  const ratio = heatmapBufferRatio(zoom)
+  const lngPadding = Math.max(0.05, (bounds.east - bounds.west) * ratio)
+  const latPadding = Math.max(0.05, (bounds.north - bounds.south) * ratio)
+  return {
+    west: Math.max(-180, bounds.west - lngPadding),
+    south: Math.max(-85, bounds.south - latPadding),
+    east: Math.min(180, bounds.east + lngPadding),
+    north: Math.min(85, bounds.north + latPadding),
+  }
+}
+
 function compactNumber(value: number): string {
   if (value < 1000) return `${value}`
   return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -240,16 +274,22 @@ const mousePoint = computed(() =>
 
 async function loadDistribution() {
   const generation = heatmapService.nextGeneration()
+  const bounds = heatmapBoundsForViewport(props.bounds, props.zoom)
   const response = await heatmapService.fetchDeviceHeatmap({
-    bounds: WORLD_BOUNDS,
+    bounds,
     columns: HEATMAP_COLUMNS,
     rows: HEATMAP_ROWS,
+    zoom: props.zoom,
     types: filterStore.criteria.types,
     propertyFilters: filterStore.criteria.propertyFilters,
   }, generation)
   if (response) {
     deviceHeatmapCells.value = response.cells
     heatmapMeta.value = {
+      west: response.west,
+      south: response.south,
+      east: response.east,
+      north: response.north,
       columns: response.columns,
       rows: response.rows,
       maxCount: response.maxCount,
@@ -287,7 +327,7 @@ function stopDrag() {
 }
 
 watch(
-  () => [filterStore.criteria.types, filterStore.criteria.propertyFilters],
+  () => [props.bounds, props.zoom, filterStore.criteria.types, filterStore.criteria.propertyFilters],
   () => {
     loadDistribution().catch(() => {})
   },

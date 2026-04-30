@@ -24,7 +24,8 @@ describe('shouldUseRegionSummaries', () => {
   it('uses region summaries through city zoom and stops at device zoom', () => {
     expect(shouldUseRegionSummaries(2)).toBe(true)
     expect(shouldUseRegionSummaries(9.9)).toBe(true)
-    expect(shouldUseRegionSummaries(10)).toBe(false)
+    expect(shouldUseRegionSummaries(10, 4)).toBe(true)
+    expect(shouldUseRegionSummaries(11.9, 4)).toBe(true)
     expect(shouldUseRegionSummaries(12, 0)).toBe(true)
     expect(shouldUseRegionSummaries(12, 4)).toBe(false)
   })
@@ -57,6 +58,37 @@ describe('useRegionLoader', () => {
     dispose()
   })
 
+  it('keeps region summaries at city zoom even when devices are visible', async () => {
+    const viewportStore = useViewportStore()
+    const regionStore = useRegionStore()
+    const performanceStore = usePerformanceStore()
+    regionStore.replaceSummary({
+      level: 'country',
+      regions: [],
+      links: [],
+      generation: 1,
+    })
+    performanceStore.visibleElementCount = 4
+    viewportStore.updateViewport({
+      zoom: 11,
+      center: { lng: 0, lat: 0 },
+      bounds: { west: -180, south: -85, east: 180, north: 85 },
+    })
+    fetchRegionSummary.mockResolvedValueOnce({
+      level: 'city',
+      regions: [],
+      links: [],
+      generation: 1,
+    })
+
+    const { loadRegionSummaries, dispose } = useRegionLoader()
+    await loadRegionSummaries()
+
+    expect(fetchRegionSummary).toHaveBeenCalledOnce()
+    expect(regionStore.level).toBe('city')
+    dispose()
+  })
+
   it('clears region summaries at device zoom when devices are visible', async () => {
     const viewportStore = useViewportStore()
     const regionStore = useRegionStore()
@@ -69,7 +101,7 @@ describe('useRegionLoader', () => {
     })
     performanceStore.visibleElementCount = 4
     viewportStore.updateViewport({
-      zoom: 10,
+      zoom: 12,
       center: { lng: 0, lat: 0 },
       bounds: { west: -180, south: -85, east: 180, north: 85 },
     })
@@ -88,8 +120,8 @@ describe('useRegionLoader', () => {
     performanceStore.visibleElementCount = 0
     viewportStore.updateViewport({
       zoom: 12,
-      center: { lng: 0.011, lat: 51.337 },
-      bounds: { west: -0.2, south: 51.1, east: 0.2, north: 51.5 },
+      center: { lng: -122.4194, lat: 37.7749 },
+      bounds: { west: -122.6, south: 37.6, east: -122.2, north: 38.0 },
     })
     fetchRegionSummary.mockResolvedValueOnce({
       level: 'city',

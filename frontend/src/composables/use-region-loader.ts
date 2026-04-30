@@ -11,7 +11,7 @@ export function shouldUseRegionSummaries(
   visibleElementCount: number = Number.POSITIVE_INFINITY,
 ): boolean {
   const z = Math.floor(zoom)
-  return z <= 9 || (z >= 10 && visibleElementCount === 0)
+  return z <= 11 || (z >= 12 && visibleElementCount === 0)
 }
 
 export function regionSummaryQueryZoom(zoom: number): number {

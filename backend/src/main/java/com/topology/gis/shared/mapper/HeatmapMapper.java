@@ -15,6 +15,7 @@ public interface HeatmapMapper {
             @Param("columns") int columns,
             @Param("rows") int rows,
             @Param("types") String types,
-            @Param("propFilter") String propFilter
+            @Param("propFilter") String propFilter,
+            @Param("networkTiers") String networkTiers
     );
 }
